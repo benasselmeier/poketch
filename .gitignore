@@ -1,0 +1,29 @@
+# Pebble project ignores
+build/
+.pebble-sdk/
+poketch-cloudpebble.zip
+*.pbw
+*.zip
+
+# Common
+.DS_Store
+*.log
+.env
+
+# Editors
+.vscode/
+.idea/
+
+# Compiled objects
+*.o
+*.elf
+*.map
+*.a
+*.so
+
+# Node / JS
+node_modules/
+
+# Python env
+.venv/
+env/

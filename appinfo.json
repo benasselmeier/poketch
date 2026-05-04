@@ -1,0 +1,11 @@
+{
+  "uuid": "0e5f3a6b-9c1d-4f2a-ae77-123456789abc",
+  "sdkVersion": "4",
+  "shortName": "Poketch",
+  "longName": "Poketch Watchface",
+  "companyName": "Homebrew",
+  "versionLabel": "1.0",
+  "versionCode": 1,
+  "watchapp": { "watchface": true },
+  "resources": { "media": [] }
+}
