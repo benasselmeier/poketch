@@ -64,8 +64,8 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
 // Increment the counter only when the touch position falls inside the side-button rect.
 static void touch_handler(const TouchEvent *event, void *context) {
   if (!event) return;
-  GPoint pt = event->position;
-  if (grect_contains_point(&s_side_button_rect, pt)) {
+  GPoint pt = GPoint(event->x, event->y);
+  if (grect_contains_point(&s_side_button_rect, &pt)) {
     s_counter++;
     layer_mark_dirty(s_layer);
   }
