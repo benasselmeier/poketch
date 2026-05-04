@@ -5,6 +5,11 @@ static Layer *s_layer;
 static GRect s_side_button_rect;
 static int s_counter = 0;
 
+static void set_counter(int value) {
+  s_counter = value;
+  layer_mark_dirty(s_layer);
+}
+
 static void update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
@@ -21,6 +26,11 @@ static void update_proc(Layer *layer, GContext *ctx) {
   GRect screen = GRect(body.origin.x + 8, body.origin.y + 10, body.size.w - 16, body.size.h - 58);
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, screen, 6, GCornersAll);
+
+  // Development label
+  GRect title = GRect(body.origin.x, body.origin.y + 4, body.size.w, 16);
+  graphics_context_set_text_color(ctx, GColorBlack);
+  graphics_draw_text(ctx, "Poketch", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), title, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 
   // Side button on the right edge (UI element)
   s_side_button_rect = GRect(bounds.size.w - 18, bounds.size.h / 2 - 20, 12, 40);
@@ -54,9 +64,28 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   layer_mark_dirty(s_layer);
 }
 
+static void increment_counter(void) {
+  set_counter(s_counter + 1);
+}
+
+static void decrement_counter(void) {
+  set_counter(s_counter - 1);
+}
+
+static void reset_counter(void) {
+  set_counter(0);
+}
+
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  s_counter++;
-  layer_mark_dirty(s_layer);
+  reset_counter();
+}
+
+static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
+  increment_counter();
+}
+
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  decrement_counter();
 }
 
 #if PBL_API_EXISTS(touch_service_subscribe)
@@ -66,15 +95,15 @@ static void touch_handler(const TouchEvent *event, void *context) {
   if (!event) return;
   GPoint pt = GPoint(event->x, event->y);
   if (grect_contains_point(&s_side_button_rect, &pt)) {
-    s_counter++;
-    layer_mark_dirty(s_layer);
+    increment_counter();
   }
 }
 #endif
 
 static void click_config_provider(void *context) {
-  // Fallback input for non-touch Pebbles: use Select button
+  window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
+  window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
 }
 
 static void window_load(Window *window) {
