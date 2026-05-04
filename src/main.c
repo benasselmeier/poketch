@@ -60,12 +60,15 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
 }
 
 #if PBL_API_EXISTS(touch_service_subscribe)
-// TouchService handler: signature varies between SDK versions. This simplified handler
-// increments the counter when a touch event occurs. If you need precise coordinates
-// use the TouchService APIs available in your SDK and adjust the handler signature.
-static void touch_handler(void *context) {
-  s_counter++;
-  layer_mark_dirty(s_layer);
+// TouchService handler for SDK 4.9+: receives a TouchEvent and a context pointer.
+// Increment the counter only when the touch position falls inside the side-button rect.
+static void touch_handler(const TouchEvent *event, void *context) {
+  if (!event) return;
+  GPoint pt = event->position;
+  if (grect_contains_point(&s_side_button_rect, pt)) {
+    s_counter++;
+    layer_mark_dirty(s_layer);
+  }
 }
 #endif
 
@@ -83,7 +86,7 @@ static void window_load(Window *window) {
 
   // Subscribe to touch service if available (Pebble Time 2 / emery)
   #if PBL_API_EXISTS(touch_service_subscribe)
-    touch_service_subscribe(touch_handler);
+    touch_service_subscribe(touch_handler, NULL);
   #endif
 }
 
@@ -105,6 +108,9 @@ static void init(void) {
   window_stack_push(s_window, true);
 
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+
+  // Force initial draw so side-button rect is defined before input arrives
+  layer_mark_dirty(window_get_root_layer(s_window));
 }
 
 static void deinit(void) {
