@@ -212,6 +212,8 @@ static uint32_t now_millis(void) {
   time_ms(&sec, &ms);
   return (uint32_t)sec * 1000 + ms;
 }
+static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
 
 static void touch_handler(const TouchEvent *event, void *context) {
   if (!event) return;
