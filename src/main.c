@@ -53,8 +53,11 @@ static void update_proc(Layer *layer, GContext *ctx) {
                             screen_inner.size.w - 4,
                             screen_inner.size.h * 2 / 3);
   graphics_context_set_text_color(ctx, GColorFromRGB(24, 58, 31));
+  const char *counter_font_key = (bounds.size.w <= 144)
+      ? FONT_KEY_BITHAM_34_MEDIUM_NUMBERS
+      : FONT_KEY_BITHAM_42_BOLD;
   graphics_draw_text(ctx, counter_text,
-                     fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD),
+                     fonts_get_system_font(counter_font_key),
                      counter_box,
                      GTextOverflowModeTrailingEllipsis,
                      GTextAlignmentCenter,
@@ -78,8 +81,11 @@ static void update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, GColorFromRGB(124, 187, 109));
   graphics_fill_rect(ctx, c_inner, 0, GCornerNone);
   graphics_context_set_text_color(ctx, GColorFromRGB(24, 58, 31));
+  const char *c_font_key = (bounds.size.w <= 144)
+      ? FONT_KEY_GOTHIC_28_BOLD
+      : FONT_KEY_BITHAM_42_BOLD;
   graphics_draw_text(ctx, "C",
-                     fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD),
+                     fonts_get_system_font(c_font_key),
                      c_inner,
                      GTextOverflowModeFill,
                      GTextAlignmentCenter,
