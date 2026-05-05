@@ -147,7 +147,7 @@ static void update_proc(Layer *layer, GContext *ctx) {
                            screen_inner.size.w - 4,
                            screen_inner.size.h / 2);
     const char *coin_font_key = (bounds.size.w >= 180)
-        ? FONT_KEY_BITHAM_42_BOLD
+        ? FONT_KEY_GOTHIC_24_BOLD
         : FONT_KEY_GOTHIC_28_BOLD;
     graphics_draw_text(ctx,
                        s_coin_heads ? "HEADS" : "TAILS",
