@@ -174,9 +174,14 @@ static void update_proc(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, c_outer, 0, GCornerNone);
   graphics_context_set_fill_color(ctx, GColorFromRGB(124, 187, 109));
   graphics_fill_rect(ctx, c_inner, 0, GCornerNone);
-  const char *c_font_key = (bounds.size.w <= 144)
-      ? FONT_KEY_GOTHIC_24_BOLD
-      : FONT_KEY_BITHAM_42_BOLD;
+  const char *c_font_key;
+  if (s_active_app == APP_COIN) {
+    c_font_key = FONT_KEY_GOTHIC_24_BOLD;
+  } else {
+    c_font_key = (bounds.size.w <= 144)
+        ? FONT_KEY_GOTHIC_24_BOLD
+        : FONT_KEY_BITHAM_42_BOLD;
+  }
   graphics_draw_text(ctx,
                      s_active_app == APP_COUNTER ? "+" : "FLIP",
                      fonts_get_system_font(c_font_key),
