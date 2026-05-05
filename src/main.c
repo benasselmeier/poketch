@@ -33,6 +33,22 @@ static int min_int(int a, int b) {
   return a < b ? a : b;
 }
 
+static const char *platform_name(void) {
+  #if defined(PBL_PLATFORM_APLITE)
+    return "Aplite";
+  #elif defined(PBL_PLATFORM_BASALT)
+    return "Basalt";
+  #elif defined(PBL_PLATFORM_CHALK)
+    return "Chalk";
+  #elif defined(PBL_PLATFORM_DIORITE)
+    return "Diorite";
+  #elif defined(PBL_PLATFORM_EMERY)
+    return "Emery";
+  #else
+    return "Unknown";
+  #endif
+}
+
 static void increment_counter(void) {
   if (s_counter >= 99999) {
     set_counter(0);
@@ -92,6 +108,15 @@ static void update_proc(Layer *layer, GContext *ctx) {
                      app_index_text,
                      fonts_get_system_font(FONT_KEY_GOTHIC_14),
                      app_index_box,
+                     GTextOverflowModeTrailingEllipsis,
+                     GTextAlignmentLeft,
+                     NULL);
+
+  GRect platform_box = GRect(screen_inner.origin.x + 3, screen_inner.origin.y + 13, 56, 12);
+  graphics_draw_text(ctx,
+                     platform_name(),
+                     fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     platform_box,
                      GTextOverflowModeTrailingEllipsis,
                      GTextAlignmentLeft,
                      NULL);
