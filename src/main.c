@@ -203,6 +203,8 @@ static void update_proc(Layer *layer, GContext *ctx) {
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
+#ifndef POKETCH_TOUCH_BLOCK_DEFINED
+#define POKETCH_TOUCH_BLOCK_DEFINED
 #if defined(PBL_TOUCH)
 static uint32_t now_millis(void) {
   time_t sec = 0;
@@ -210,6 +212,8 @@ static uint32_t now_millis(void) {
   time_ms(&sec, &ms);
   return (uint32_t)sec * 1000 + ms;
 }
+static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
 
 static void touch_handler(const TouchEvent *event, void *context) {
   if (!event) return;
@@ -220,14 +224,11 @@ static void touch_handler(const TouchEvent *event, void *context) {
   s_last_touch_action_ms = now;
   run_active_action();
 }
+#endif
+#endif
 
-static void select_click_handler(ClickRecognizerRef recognizer, void *context) { run_active_action(); }
-static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
-  if (s_active_app == APP_KITCHEN_TIMER) reset_kitchen_timer();
-}
-static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
-static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
-
+#ifndef POKETCH_CLICK_HANDLERS_DEFINED
+#define POKETCH_CLICK_HANDLERS_DEFINED
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) { run_active_action(); }
 static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
   if (s_active_app == APP_KITCHEN_TIMER) reset_kitchen_timer();
@@ -241,6 +242,9 @@ static void click_config_provider(void *context) {
   window_long_click_subscribe(BUTTON_ID_SELECT, 500, select_long_click_handler, NULL);
   window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
 }
+
+
+#endif
 
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
