@@ -3,10 +3,23 @@
 static Window *s_window;
 static Layer *s_layer;
 static int s_counter = 0;
+static bool s_coin_heads = true;
+
+typedef enum {
+  APP_COUNTER = 0,
+  APP_COIN = 1,
+  APP_COUNT = 2,
+} PoketchApp;
+
+static PoketchApp s_active_app = APP_COUNTER;
+
+static void redraw(void) {
+  layer_mark_dirty(s_layer);
+}
 
 static void set_counter(int value) {
   s_counter = value;
-  layer_mark_dirty(s_layer);
+  redraw();
 }
 
 static GRect inset_rect(GRect rect, int inset) {
@@ -20,13 +33,37 @@ static int min_int(int a, int b) {
   return a < b ? a : b;
 }
 
+static void increment_counter(void) {
+  if (s_counter >= 99999) {
+    set_counter(0);
+  } else {
+    set_counter(s_counter + 1);
+  }
+}
+
+static void flip_coin(void) {
+  s_coin_heads = !s_coin_heads;
+  redraw();
+}
+
+static void next_app(void) {
+  s_active_app = (PoketchApp)((s_active_app + 1) % APP_COUNT);
+  redraw();
+}
+
+static void prev_app(void) {
+  int next = (int)s_active_app - 1;
+  if (next < 0) next = APP_COUNT - 1;
+  s_active_app = (PoketchApp)next;
+  redraw();
+}
+
 static void update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
   graphics_context_set_fill_color(ctx, GColorFromRGB(116, 181, 103));
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  // Adaptive sizing for the original Pebble through Time 2.
   int side_pad = bounds.size.w / 12;
   if (side_pad < 6) side_pad = 6;
   int top_pad = bounds.size.h / 16;
@@ -46,28 +83,53 @@ static void update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, GColorFromRGB(124, 187, 109));
   graphics_fill_rect(ctx, screen_inner, 6, GCornersAll);
 
-  char counter_text[16];
-  if (s_counter < 100) {
-    snprintf(counter_text, sizeof(counter_text), "%02d", s_counter);
-  } else {
-    snprintf(counter_text, sizeof(counter_text), "%d", s_counter);
-  }
-  GRect counter_box = GRect(screen_inner.origin.x + 2,
-                            screen_inner.origin.y + screen_inner.size.h / 6,
-                            screen_inner.size.w - 4,
-                            screen_inner.size.h * 2 / 3);
+  // App index indicator (top-left debug label): 1/2, 2/2, ...
+  char app_index_text[8];
+  snprintf(app_index_text, sizeof(app_index_text), "%d/%d", (int)s_active_app + 1, APP_COUNT);
+  GRect app_index_box = GRect(screen_inner.origin.x + 3, screen_inner.origin.y + 1, 36, 14);
   graphics_context_set_text_color(ctx, GColorFromRGB(24, 58, 31));
-  const char *counter_font_key = (bounds.size.w <= 144)
-      ? FONT_KEY_BITHAM_30_BLACK
-      : FONT_KEY_BITHAM_42_BOLD;
-  graphics_draw_text(ctx, counter_text,
-                     fonts_get_system_font(counter_font_key),
-                     counter_box,
+  graphics_draw_text(ctx,
+                     app_index_text,
+                     fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     app_index_box,
                      GTextOverflowModeTrailingEllipsis,
-                     GTextAlignmentCenter,
+                     GTextAlignmentLeft,
                      NULL);
 
-  // C button centered beneath the display.
+  if (s_active_app == APP_COUNTER) {
+    char counter_text[16];
+    if (s_counter < 100) {
+      snprintf(counter_text, sizeof(counter_text), "%02d", s_counter);
+    } else {
+      snprintf(counter_text, sizeof(counter_text), "%d", s_counter);
+    }
+    GRect counter_box = GRect(screen_inner.origin.x + 2,
+                              screen_inner.origin.y + screen_inner.size.h / 6,
+                              screen_inner.size.w - 4,
+                              screen_inner.size.h * 2 / 3);
+    const char *counter_font_key = (bounds.size.w <= 144)
+        ? FONT_KEY_BITHAM_30_BLACK
+        : FONT_KEY_BITHAM_42_BOLD;
+    graphics_draw_text(ctx, counter_text,
+                       fonts_get_system_font(counter_font_key),
+                       counter_box,
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentCenter,
+                       NULL);
+  } else {
+    GRect coin_box = GRect(screen_inner.origin.x + 2,
+                           screen_inner.origin.y + screen_inner.size.h / 5,
+                           screen_inner.size.w - 4,
+                           screen_inner.size.h * 3 / 5);
+    graphics_draw_text(ctx,
+                       s_coin_heads ? "HEADS" : "TAILS",
+                       fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
+                       coin_box,
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentCenter,
+                       NULL);
+  }
+
   int c_w = bounds.size.w / 2;
   if (c_w < 48) c_w = 48;
   if (c_w > 72) c_w = 72;
@@ -84,46 +146,32 @@ static void update_proc(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, c_outer, 0, GCornerNone);
   graphics_context_set_fill_color(ctx, GColorFromRGB(124, 187, 109));
   graphics_fill_rect(ctx, c_inner, 0, GCornerNone);
-  graphics_context_set_text_color(ctx, GColorFromRGB(24, 58, 31));
   const char *c_font_key = (bounds.size.w <= 144)
-      ? FONT_KEY_GOTHIC_28_BOLD
+      ? FONT_KEY_GOTHIC_24_BOLD
       : FONT_KEY_BITHAM_42_BOLD;
-  graphics_draw_text(ctx, "C",
+  graphics_draw_text(ctx,
+                     s_active_app == APP_COUNTER ? "+" : "FLIP",
                      fonts_get_system_font(c_font_key),
                      c_inner,
-                     GTextOverflowModeFill,
+                     GTextOverflowModeTrailingEllipsis,
                      GTextAlignmentCenter,
                      NULL);
 }
 
-static void increment_counter(void) {
-  if (s_counter >= 99999) {
-    set_counter(0);
-  } else {
-    set_counter(s_counter + 1);
-  }
-}
-
-static void decrement_counter(void) {
-  if (s_counter > 0) {
-    set_counter(s_counter - 1);
-  }
-}
-
-static void reset_counter(void) {
-  set_counter(0);
-}
-
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  reset_counter();
+  if (s_active_app == APP_COUNTER) {
+    increment_counter();
+  } else {
+    flip_coin();
+  }
 }
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  increment_counter();
+  prev_app();
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  decrement_counter();
+  next_app();
 }
 
 static void click_config_provider(void *context) {
