@@ -85,9 +85,9 @@ static void update_proc(Layer *layer, GContext *ctx) {
   int top_pad = bounds.size.h / 16;
   if (top_pad < 6) top_pad = 6;
 
-  int screen_h = bounds.size.h / 2;
+  int screen_h = (bounds.size.h * 9) / 16;
   if (screen_h < 56) screen_h = 56;
-  if (screen_h > 92) screen_h = 92;
+  if (screen_h > 120) screen_h = 120;
 
   GRect screen_outer = GRect(side_pad, top_pad, bounds.size.w - side_pad * 2, screen_h);
   int screen_inset = min_int(5, screen_outer.size.w / 16);
@@ -143,12 +143,15 @@ static void update_proc(Layer *layer, GContext *ctx) {
                        NULL);
   } else {
     GRect coin_box = GRect(screen_inner.origin.x + 2,
-                           screen_inner.origin.y + screen_inner.size.h / 5,
+                           screen_inner.origin.y + screen_inner.size.h / 4,
                            screen_inner.size.w - 4,
-                           screen_inner.size.h * 3 / 5);
+                           screen_inner.size.h / 2);
+    const char *coin_font_key = (bounds.size.w >= 180)
+        ? FONT_KEY_BITHAM_42_BOLD
+        : FONT_KEY_GOTHIC_28_BOLD;
     graphics_draw_text(ctx,
                        s_coin_heads ? "HEADS" : "TAILS",
-                       fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
+                       fonts_get_system_font(coin_font_key),
                        coin_box,
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentCenter,
