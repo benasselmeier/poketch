@@ -89,6 +89,7 @@ static void reset_kitchen_timer(void) {
   s_timer_remaining_s = 5 * 60;
   redraw();
 }
+#endif
 
 static void next_app(void) {
   s_active_app = (PoketchApp)((s_active_app + 1) % APP_COUNT);
@@ -220,7 +221,6 @@ static void touch_handler(const TouchEvent *event, void *context) {
   s_last_touch_action_ms = now;
   run_active_action();
 }
-#endif
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) { run_active_action(); }
 static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
