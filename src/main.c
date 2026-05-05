@@ -47,14 +47,18 @@ static void update_proc(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, screen_inner, 6, GCornersAll);
 
   char counter_text[16];
-  snprintf(counter_text, sizeof(counter_text), "%05d", s_counter);
+  if (s_counter < 100) {
+    snprintf(counter_text, sizeof(counter_text), "%02d", s_counter);
+  } else {
+    snprintf(counter_text, sizeof(counter_text), "%d", s_counter);
+  }
   GRect counter_box = GRect(screen_inner.origin.x + 2,
                             screen_inner.origin.y + screen_inner.size.h / 6,
                             screen_inner.size.w - 4,
                             screen_inner.size.h * 2 / 3);
   graphics_context_set_text_color(ctx, GColorFromRGB(24, 58, 31));
   const char *counter_font_key = (bounds.size.w <= 144)
-      ? FONT_KEY_BITHAM_34_MEDIUM_NUMBERS
+      ? FONT_KEY_BITHAM_30_BLACK
       : FONT_KEY_BITHAM_42_BOLD;
   graphics_draw_text(ctx, counter_text,
                      fonts_get_system_font(counter_font_key),
