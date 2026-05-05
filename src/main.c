@@ -10,66 +10,72 @@ static void set_counter(int value) {
   layer_mark_dirty(s_layer);
 }
 
+static GRect inset_rect(GRect rect, int inset) {
+  return GRect(rect.origin.x + inset,
+               rect.origin.y + inset,
+               rect.size.w - inset * 2,
+               rect.size.h - inset * 2);
+}
+
 static void update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
-  // Background
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  // Background matches the Poketch's green field instead of a watchface shell.
+  graphics_context_set_fill_color(ctx, GColorFromRGB(116, 181, 103));
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  // Pokétch outer body
-  GRect body = GRect(10, 12, bounds.size.w - 20, bounds.size.h - 24);
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, body, 8, GCornersAll);
+  // Main counter screen.
+  GRect screen_outer = GRect(8, 10, bounds.size.w - 26, 92);
+  GRect screen_inner = inset_rect(screen_outer, 5);
+  graphics_context_set_fill_color(ctx, GColorFromRGB(90, 145, 81));
+  graphics_fill_rect(ctx, screen_outer, 8, GCornersAll);
+  graphics_context_set_fill_color(ctx, GColorFromRGB(124, 187, 109));
+  graphics_fill_rect(ctx, screen_inner, 6, GCornersAll);
 
-  // Screen area
-  GRect screen = GRect(body.origin.x + 8, body.origin.y + 10, body.size.w - 16, body.size.h - 58);
+  // Counter text.
+  char counter_text[16];
+  snprintf(counter_text, sizeof(counter_text), "%05d", s_counter);
+  GRect counter_box = GRect(screen_inner.origin.x + 4, screen_inner.origin.y + 14, screen_inner.size.w - 8, 42);
+  graphics_context_set_text_color(ctx, GColorFromRGB(24, 58, 31));
+  graphics_draw_text(ctx, counter_text, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD), counter_box, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+
+  // C button below the display.
+  GRect c_outer = GRect(bounds.origin.x + 44, 112, 56, 46);
+  GRect c_inner = inset_rect(c_outer, 4);
+  graphics_context_set_fill_color(ctx, GColorFromRGB(74, 121, 67));
+  graphics_fill_rect(ctx, c_outer, 0, GCornerNone);
+  graphics_context_set_fill_color(ctx, GColorFromRGB(124, 187, 109));
+  graphics_fill_rect(ctx, c_inner, 0, GCornerNone);
+  graphics_context_set_text_color(ctx, GColorFromRGB(24, 58, 31));
+  graphics_draw_text(ctx, "C", fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD), c_inner, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+
+  // Right-side button bar: one bar with two buttons.
+  s_side_button_rect = GRect(bounds.size.w - 15, 0, 15, bounds.size.h);
+  GRect bar = s_side_button_rect;
   graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_fill_rect(ctx, screen, 6, GCornersAll);
+  graphics_fill_rect(ctx, bar, 0, GCornerNone);
 
-  // Development label
-  GRect title = GRect(body.origin.x, body.origin.y + 4, body.size.w, 16);
-  graphics_context_set_text_color(ctx, GColorBlack);
-  graphics_draw_text(ctx, "Poketch", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), title, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-
-  // Side button on the right edge (UI element)
-  s_side_button_rect = GRect(bounds.size.w - 18, bounds.size.h / 2 - 20, 12, 40);
-  graphics_context_set_fill_color(ctx, GColorDarkGray);
-  graphics_fill_rect(ctx, s_side_button_rect, 4, GCornersAll);
-
-  // Draw current time centered in the screen area
-  time_t now = time(NULL);
-  struct tm *t = localtime(&now);
-  static char time_text[6];
-  if (clock_is_24h_style()) {
-    strftime(time_text, sizeof(time_text), "%H:%M", t);
-  } else {
-    strftime(time_text, sizeof(time_text), "%I:%M", t);
-  }
-  GFont time_font = fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD);
-  graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, time_text, time_font, screen, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-
-  // Small counter bubble above the side button
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%d", s_counter);
-  GRect bubble = GRect(s_side_button_rect.origin.x - 18, s_side_button_rect.origin.y - 12, 36, 22);
-  graphics_context_set_fill_color(ctx, GColorRed);
-  graphics_fill_rect(ctx, bubble, 10, GCornersAll);
-  graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), bubble, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-}
-
-static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  layer_mark_dirty(s_layer);
+  GRect top_button = GRect(bar.origin.x + 1, 0, bar.size.w - 1, bounds.size.h / 2 - 1);
+  GRect bottom_button = GRect(bar.origin.x + 1, bounds.size.h / 2 + 1, bar.size.w - 1, bounds.size.h - (bounds.size.h / 2) - 1);
+  graphics_context_set_fill_color(ctx, GColorFromRGB(249, 74, 88));
+  graphics_fill_rect(ctx, top_button, 4, GCornersRight);
+  graphics_fill_rect(ctx, bottom_button, 4, GCornersRight);
+  graphics_context_set_stroke_color(ctx, GColorFromRGB(120, 24, 31));
+  graphics_draw_line(ctx, GPoint(bar.origin.x + 1, bounds.size.h / 2), GPoint(bar.origin.x + bar.size.w - 1, bounds.size.h / 2));
 }
 
 static void increment_counter(void) {
-  set_counter(s_counter + 1);
+  if (s_counter >= 99999) {
+    set_counter(0);
+  } else {
+    set_counter(s_counter + 1);
+  }
 }
 
 static void decrement_counter(void) {
-  set_counter(s_counter - 1);
+  if (s_counter > 0) {
+    set_counter(s_counter - 1);
+  }
 }
 
 static void reset_counter(void) {
@@ -136,14 +142,11 @@ static void init(void) {
   window_set_click_config_provider(s_window, click_config_provider);
   window_stack_push(s_window, true);
 
-  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
-
   // Force initial draw so side-button rect is defined before input arrives
   layer_mark_dirty(window_get_root_layer(s_window));
 }
 
 static void deinit(void) {
-  tick_timer_service_unsubscribe();
   window_destroy(s_window);
 }
 
