@@ -220,7 +220,13 @@ static void touch_handler(const TouchEvent *event, void *context) {
   s_last_touch_action_ms = now;
   run_active_action();
 }
-#endif
+
+static void select_click_handler(ClickRecognizerRef recognizer, void *context) { run_active_action(); }
+static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_active_app == APP_KITCHEN_TIMER) reset_kitchen_timer();
+}
+static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) { run_active_action(); }
 static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
