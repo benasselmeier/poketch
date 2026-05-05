@@ -334,9 +334,7 @@ static void init(void) {
   window_stack_push(s_window, true);
 }
 
-static void deinit(void) {
-  window_destroy(s_window);
-}
+static void deinit(void) { window_destroy(s_window); }
 
 int main(void) {
   init();
