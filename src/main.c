@@ -89,7 +89,6 @@ static void reset_kitchen_timer(void) {
   s_timer_remaining_s = 5 * 60;
   redraw();
 }
-#endif
 
 static void next_app(void) {
   s_active_app = (PoketchApp)((s_active_app + 1) % APP_COUNT);
@@ -204,7 +203,7 @@ static void update_proc(Layer *layer, GContext *ctx) {
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
-#if PBL_API_EXISTS(touch_service_subscribe)
+#if defined(PBL_TOUCH)
 static uint32_t now_millis(void) {
   time_t sec = 0;
   uint16_t ms = 0;
@@ -229,6 +228,13 @@ static void select_long_click_handler(ClickRecognizerRef recognizer, void *conte
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
 
+static void select_click_handler(ClickRecognizerRef recognizer, void *context) { run_active_action(); }
+static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_active_app == APP_KITCHEN_TIMER) reset_kitchen_timer();
+}
+static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
+
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
@@ -241,13 +247,13 @@ static void window_load(Window *window) {
   s_layer = layer_create(layer_get_bounds(window_layer));
   layer_set_update_proc(s_layer, update_proc);
   layer_add_child(window_layer, s_layer);
-#if PBL_API_EXISTS(touch_service_subscribe)
+#if defined(PBL_TOUCH)
   touch_service_subscribe(touch_handler, NULL);
 #endif
 }
 
 static void window_unload(Window *window) {
-#if PBL_API_EXISTS(touch_service_unsubscribe)
+#if defined(PBL_TOUCH)
   touch_service_unsubscribe();
 #endif
   if (s_kitchen_timer) app_timer_cancel(s_kitchen_timer);
