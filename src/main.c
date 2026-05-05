@@ -4,6 +4,7 @@ static Window *s_window;
 static Layer *s_layer;
 static int s_counter = 0;
 static bool s_coin_heads = true;
+static GRect s_action_button_rect;
 
 typedef enum {
   APP_COUNTER = 0,
@@ -169,6 +170,7 @@ static void update_proc(Layer *layer, GContext *ctx) {
     c_y = bounds.size.h - c_h - 4;
   }
   GRect c_outer = GRect((bounds.size.w - c_w) / 2, c_y, c_w, c_h);
+  s_action_button_rect = c_outer;
   GRect c_inner = inset_rect(c_outer, 4);
   graphics_context_set_fill_color(ctx, GColorFromRGB(74, 121, 67));
   graphics_fill_rect(ctx, c_outer, 0, GCornerNone);
@@ -190,6 +192,21 @@ static void update_proc(Layer *layer, GContext *ctx) {
                      GTextAlignmentCenter,
                      NULL);
 }
+
+
+#if PBL_API_EXISTS(touch_service_subscribe)
+static void touch_handler(const TouchEvent *event, void *context) {
+  if (!event) return;
+  GPoint pt = GPoint(event->x, event->y);
+  if (grect_contains_point(&s_action_button_rect, &pt)) {
+    if (s_active_app == APP_COUNTER) {
+      increment_counter();
+    } else {
+      flip_coin();
+    }
+  }
+}
+#endif
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   if (s_active_app == APP_COUNTER) {
@@ -219,9 +236,16 @@ static void window_load(Window *window) {
   s_layer = layer_create(bounds);
   layer_set_update_proc(s_layer, update_proc);
   layer_add_child(window_layer, s_layer);
+
+  #if PBL_API_EXISTS(touch_service_subscribe)
+    touch_service_subscribe(touch_handler, NULL);
+  #endif
 }
 
 static void window_unload(Window *window) {
+  #if PBL_API_EXISTS(touch_service_unsubscribe)
+    touch_service_unsubscribe();
+  #endif
   layer_destroy(s_layer);
 }
 
