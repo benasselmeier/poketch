@@ -23,14 +23,18 @@ typedef enum {
 
 static PoketchApp s_active_app = APP_COUNTER;
 
-static void redraw(void) { layer_mark_dirty(s_layer); }
+static void redraw(void) {
+  layer_mark_dirty(s_layer);
+}
 
 static GRect inset_rect(GRect rect, int inset) {
   return GRect(rect.origin.x + inset, rect.origin.y + inset,
                rect.size.w - inset * 2, rect.size.h - inset * 2);
 }
 
-static int min_int(int a, int b) { return a < b ? a : b; }
+static int min_int(int a, int b) {
+  return a < b ? a : b;
+}
 
 static const char *platform_name(void) {
 #if defined(PBL_PLATFORM_APLITE)
@@ -66,27 +70,38 @@ static void increment_steps(void) {
 
 static void kitchen_timer_tick(void *context) {
   if (!s_timer_running) return;
-  if (s_timer_remaining_s > 0) s_timer_remaining_s--;
+
+  if (s_timer_remaining_s > 0) {
+    s_timer_remaining_s--;
+  }
+
   if (s_timer_remaining_s > 0) {
     s_kitchen_timer = app_timer_register(1000, kitchen_timer_tick, NULL);
   } else {
     s_timer_running = false;
+    s_kitchen_timer = NULL;
     vibes_short_pulse();
   }
+
   redraw();
 }
 
 static void toggle_kitchen_timer(void) {
   s_timer_running = !s_timer_running;
+
   if (s_timer_running) {
     s_kitchen_timer = app_timer_register(1000, kitchen_timer_tick, NULL);
+  } else {
+    s_kitchen_timer = NULL;
   }
+
   redraw();
 }
 
 static void reset_kitchen_timer(void) {
   s_timer_running = false;
   s_timer_remaining_s = 5 * 60;
+  s_kitchen_timer = NULL;
   redraw();
 }
 
@@ -104,12 +119,28 @@ static void prev_app(void) {
 
 static void run_active_action(void) {
   switch (s_active_app) {
-    case APP_COUNTER: increment_counter(); break;
-    case APP_COIN: flip_coin(); break;
-    case APP_PEDOMETER: increment_steps(); break;
-    case APP_KITCHEN_TIMER: toggle_kitchen_timer(); break;
-    default: break;
+    case APP_COUNTER:
+      increment_counter();
+      break;
+    case APP_COIN:
+      flip_coin();
+      break;
+    case APP_PEDOMETER:
+      increment_steps();
+      break;
+    case APP_KITCHEN_TIMER:
+      toggle_kitchen_timer();
+      break;
+    default:
+      break;
   }
+}
+
+static uint32_t now_millis(void) {
+  time_t sec = 0;
+  uint16_t ms = 0;
+  time_ms(&sec, &ms);
+  return (uint32_t)sec * 1000 + ms;
 }
 
 static void update_proc(Layer *layer, GContext *ctx) {
@@ -149,33 +180,55 @@ static void update_proc(Layer *layer, GContext *ctx) {
   if (s_active_app == APP_COUNTER || s_active_app == APP_PEDOMETER) {
     int value = (s_active_app == APP_COUNTER) ? s_counter : s_steps;
     char value_text[16];
-    if (value < 100) snprintf(value_text, sizeof(value_text), "%02d", value);
-    else snprintf(value_text, sizeof(value_text), "%d", value);
+    if (value < 100) {
+      snprintf(value_text, sizeof(value_text), "%02d", value);
+    } else {
+      snprintf(value_text, sizeof(value_text), "%d", value);
+    }
 
     graphics_draw_text(ctx, value_text,
                        fonts_get_system_font((bounds.size.w <= 144) ? FONT_KEY_BITHAM_30_BLACK : FONT_KEY_BITHAM_42_BOLD),
-                       GRect(screen_inner.origin.x + 2, screen_inner.origin.y + screen_inner.size.h / 6,
-                             screen_inner.size.w - 4, screen_inner.size.h * 2 / 3),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+                       GRect(screen_inner.origin.x + 2,
+                             screen_inner.origin.y + screen_inner.size.h / 6,
+                             screen_inner.size.w - 4,
+                             screen_inner.size.h * 2 / 3),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentCenter,
+                       NULL);
   } else if (s_active_app == APP_COIN) {
-    graphics_draw_text(ctx, s_coin_heads ? "HEADS" : "TAILS",
+    graphics_draw_text(ctx,
+                       s_coin_heads ? "HEADS" : "TAILS",
                        fonts_get_system_font((bounds.size.w >= 180) ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD),
-                       GRect(screen_inner.origin.x + 2, screen_inner.origin.y + screen_inner.size.h / 4,
-                             screen_inner.size.w - 4, screen_inner.size.h / 2),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+                       GRect(screen_inner.origin.x + 2,
+                             screen_inner.origin.y + screen_inner.size.h / 4,
+                             screen_inner.size.w - 4,
+                             screen_inner.size.h / 2),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentCenter,
+                       NULL);
   } else {
     int min = s_timer_remaining_s / 60;
     int sec = s_timer_remaining_s % 60;
     char timer_text[8];
     snprintf(timer_text, sizeof(timer_text), "%02d:%02d", min, sec);
-    graphics_draw_text(ctx, ":)", fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+
+    graphics_draw_text(ctx,
+                       ":)",
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                        GRect(screen_inner.origin.x, screen_inner.origin.y + 16, screen_inner.size.w, 20),
-                       GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-    graphics_draw_text(ctx, timer_text,
+                       GTextOverflowModeFill,
+                       GTextAlignmentCenter,
+                       NULL);
+    graphics_draw_text(ctx,
+                       timer_text,
                        fonts_get_system_font((bounds.size.w <= 144) ? FONT_KEY_BITHAM_30_BLACK : FONT_KEY_BITHAM_42_BOLD),
-                       GRect(screen_inner.origin.x + 2, screen_inner.origin.y + screen_inner.size.h / 3,
-                             screen_inner.size.w - 4, screen_inner.size.h / 2),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+                       GRect(screen_inner.origin.x + 2,
+                             screen_inner.origin.y + screen_inner.size.h / 3,
+                             screen_inner.size.w - 4,
+                             screen_inner.size.h / 2),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentCenter,
+                       NULL);
   }
 
   int c_w = bounds.size.w / 2;
@@ -199,42 +252,46 @@ static void update_proc(Layer *layer, GContext *ctx) {
   if (s_active_app == APP_COIN) label = "FLIP";
   if (s_active_app == APP_PEDOMETER) label = "+10";
   if (s_active_app == APP_KITCHEN_TIMER) label = s_timer_running ? "STOP" : "START";
-  graphics_draw_text(ctx, label, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), c_inner,
-                     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  graphics_draw_text(ctx, label,
+                     fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                     c_inner,
+                     GTextOverflowModeTrailingEllipsis,
+                     GTextAlignmentCenter,
+                     NULL);
 }
 
-#ifndef POKETCH_TOUCH_BLOCK_DEFINED
-#define POKETCH_TOUCH_BLOCK_DEFINED
 #if defined(PBL_TOUCH)
-static uint32_t now_millis(void) {
-  time_t sec = 0;
-  uint16_t ms = 0;
-  time_ms(&sec, &ms);
-  return (uint32_t)sec * 1000 + ms;
-}
-static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
-static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
-
 static void touch_handler(const TouchEvent *event, void *context) {
   if (!event) return;
+
   GPoint pt = GPoint(event->x, event->y);
   if (!grect_contains_point(&s_action_button_rect, &pt)) return;
+
   uint32_t now = now_millis();
   if (now - s_last_touch_action_ms < 250) return;
   s_last_touch_action_ms = now;
+
   run_active_action();
 }
 #endif
-#endif
 
-#ifndef POKETCH_CLICK_HANDLERS_DEFINED
-#define POKETCH_CLICK_HANDLERS_DEFINED
-static void select_click_handler(ClickRecognizerRef recognizer, void *context) { run_active_action(); }
-static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
-  if (s_active_app == APP_KITCHEN_TIMER) reset_kitchen_timer();
+static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
+  run_active_action();
 }
-static void up_click_handler(ClickRecognizerRef recognizer, void *context) { prev_app(); }
-static void down_click_handler(ClickRecognizerRef recognizer, void *context) { next_app(); }
+
+static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_active_app == APP_KITCHEN_TIMER) {
+    reset_kitchen_timer();
+  }
+}
+
+static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
+  prev_app();
+}
+
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  next_app();
+}
 
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
@@ -243,14 +300,12 @@ static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
 }
 
-
-#endif
-
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   s_layer = layer_create(layer_get_bounds(window_layer));
   layer_set_update_proc(s_layer, update_proc);
   layer_add_child(window_layer, s_layer);
+
 #if defined(PBL_TOUCH)
   touch_service_subscribe(touch_handler, NULL);
 #endif
@@ -260,13 +315,21 @@ static void window_unload(Window *window) {
 #if defined(PBL_TOUCH)
   touch_service_unsubscribe();
 #endif
-  if (s_kitchen_timer) app_timer_cancel(s_kitchen_timer);
+
+  if (s_kitchen_timer) {
+    app_timer_cancel(s_kitchen_timer);
+    s_kitchen_timer = NULL;
+  }
+
   layer_destroy(s_layer);
 }
 
 static void init(void) {
   s_window = window_create();
-  window_set_window_handlers(s_window, (WindowHandlers){ .load = window_load, .unload = window_unload });
+  window_set_window_handlers(s_window, (WindowHandlers){
+    .load = window_load,
+    .unload = window_unload,
+  });
   window_set_click_config_provider(s_window, click_config_provider);
   window_stack_push(s_window, true);
 }
