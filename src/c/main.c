@@ -168,20 +168,22 @@ static void music_refresh_from_phone(void) {
 }
 
 static void music_prev_track(void) {
-  music_player_remote_command(MusicPlayerActionPreviousTrack);
+  // This Pebble SDK build does not expose a native music transport API.
+  // Keep the control responsive, but do not call unsupported symbols.
+  vibes_short_pulse();
   music_refresh_from_phone();
   redraw();
 }
 
 static void music_next_track(void) {
-  music_player_remote_command(MusicPlayerActionNextTrack);
+  vibes_short_pulse();
   music_refresh_from_phone();
   redraw();
 }
 
 static void music_toggle_play_pause(void) {
-  music_player_remote_command(MusicPlayerActionPlayPause);
   s_music_playing = !s_music_playing;
+  vibes_short_pulse();
   redraw();
 }
 
