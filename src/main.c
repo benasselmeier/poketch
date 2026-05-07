@@ -9,19 +9,22 @@ static int s_steps = 6190;
 static bool s_coin_heads = true;
 static GRect s_action_button_rect;
 static uint32_t s_last_touch_action_ms = 0;
+static int s_music_track_index = 0;
+static bool s_music_playing = true;
 
 static int s_timer_remaining_s = 5 * 60;
 static bool s_timer_running = false;
 
 typedef enum {
-  APP_COUNTER = 0,
-  APP_COIN = 1,
-  APP_PEDOMETER = 2,
-  APP_KITCHEN_TIMER = 3,
-  APP_COUNT = 4,
+  APP_MUSIC = 0,
+  APP_COUNTER = 1,
+  APP_COIN = 2,
+  APP_PEDOMETER = 3,
+  APP_KITCHEN_TIMER = 4,
+  APP_COUNT = 5,
 } PoketchApp;
 
-static PoketchApp s_active_app = APP_COUNTER;
+static PoketchApp s_active_app = APP_MUSIC;
 
 static void redraw(void) {
   layer_mark_dirty(s_layer);
@@ -65,6 +68,37 @@ static void flip_coin(void) {
 static void increment_steps(void) {
   s_steps += 10;
   if (s_steps > 99999) s_steps = 0;
+  redraw();
+}
+
+typedef struct {
+  const char *title;
+  const char *artist;
+  const char *album;
+  const char *time_text;
+} MusicTrack;
+
+static const MusicTrack s_music_tracks[] = {
+  {"The Peak of Superstition", "Dance Gavin Dance", "Pantheon", "00:43 / 04:11"},
+  {"Feather", "Nujabes", "Modal Soul", "01:22 / 05:32"},
+  {"Deadbolt", "Thrice", "The Artist in the Ambulance", "02:09 / 03:00"},
+};
+
+static const int s_music_track_count = sizeof(s_music_tracks) / sizeof(s_music_tracks[0]);
+
+static void music_prev_track(void) {
+  s_music_track_index--;
+  if (s_music_track_index < 0) s_music_track_index = s_music_track_count - 1;
+  redraw();
+}
+
+static void music_next_track(void) {
+  s_music_track_index = (s_music_track_index + 1) % s_music_track_count;
+  redraw();
+}
+
+static void music_toggle_play_pause(void) {
+  s_music_playing = !s_music_playing;
   redraw();
 }
 
@@ -119,6 +153,9 @@ static void prev_app(void) {
 
 static void run_active_action(void) {
   switch (s_active_app) {
+    case APP_MUSIC:
+      music_toggle_play_pause();
+      break;
     case APP_COUNTER:
       increment_counter();
       break;
@@ -173,8 +210,10 @@ static void update_proc(Layer *layer, GContext *ctx) {
   graphics_draw_text(ctx, app_index_text, fonts_get_system_font(FONT_KEY_GOTHIC_14),
                      GRect(screen_inner.origin.x + 3, screen_inner.origin.y + 1, 42, 14),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-  graphics_draw_text(ctx, platform_name(), fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(screen_inner.origin.x + 3, screen_inner.origin.y + 13, 56, 12),
+  const char *subtitle = platform_name();
+  if (s_active_app == APP_MUSIC) subtitle = "Music";
+  graphics_draw_text(ctx, subtitle, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     GRect(screen_inner.origin.x + 3, screen_inner.origin.y + 13, screen_inner.size.w - 6, 12),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
   if (s_active_app == APP_COUNTER || s_active_app == APP_PEDOMETER) {
@@ -206,7 +245,7 @@ static void update_proc(Layer *layer, GContext *ctx) {
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentCenter,
                        NULL);
-  } else {
+  } else if (s_active_app == APP_KITCHEN_TIMER) {
     int min = s_timer_remaining_s / 60;
     int sec = s_timer_remaining_s % 60;
     char timer_text[8];
@@ -229,6 +268,43 @@ static void update_proc(Layer *layer, GContext *ctx) {
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentCenter,
                        NULL);
+  } else if (s_active_app == APP_MUSIC) {
+    const MusicTrack *track = &s_music_tracks[s_music_track_index];
+    graphics_draw_text(ctx,
+                       track->title,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                       GRect(screen_inner.origin.x + 5, screen_inner.origin.y + 27, screen_inner.size.w - 10, 30),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentLeft,
+                       NULL);
+    graphics_draw_text(ctx,
+                       track->artist,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24),
+                       GRect(screen_inner.origin.x + 5, screen_inner.origin.y + 54, screen_inner.size.w - 10, 28),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentLeft,
+                       NULL);
+    graphics_draw_text(ctx,
+                       track->album,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_OBLIQUE),
+                       GRect(screen_inner.origin.x + 5, screen_inner.origin.y + 79, screen_inner.size.w - 10, 28),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentLeft,
+                       NULL);
+    graphics_draw_text(ctx,
+                       track->time_text,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                       GRect(screen_inner.origin.x + 2, screen_inner.origin.y + screen_inner.size.h - 32, screen_inner.size.w - 4, 26),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentCenter,
+                       NULL);
+    graphics_draw_text(ctx,
+                       s_music_playing ? "PLAYING" : "PAUSED",
+                       fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(screen_inner.origin.x + 2, screen_inner.origin.y + 2, screen_inner.size.w - 4, 14),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentRight,
+                       NULL);
   }
 
   int c_w = bounds.size.w / 2;
@@ -249,6 +325,7 @@ static void update_proc(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, c_inner, 0, GCornerNone);
 
   const char *label = "+";
+  if (s_active_app == APP_MUSIC) label = s_music_playing ? "PAUSE" : "PLAY";
   if (s_active_app == APP_COIN) label = "FLIP";
   if (s_active_app == APP_PEDOMETER) label = "+10";
   if (s_active_app == APP_KITCHEN_TIMER) label = s_timer_running ? "STOP" : "START";
@@ -286,10 +363,18 @@ static void select_long_click_handler(ClickRecognizerRef recognizer, void *conte
 }
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_active_app == APP_MUSIC) {
+    music_prev_track();
+    return;
+  }
   prev_app();
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_active_app == APP_MUSIC) {
+    music_next_track();
+    return;
+  }
   next_app();
 }
 
