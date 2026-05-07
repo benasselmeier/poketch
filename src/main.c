@@ -29,6 +29,8 @@ static int s_counter = 0;
 static int s_steps = 6190;
 static bool s_coin_heads = true;
 static bool s_coin_flipping = false;
+static int s_music_track_index = 0;
+static bool s_music_playing = true;
 
 static int s_timer_remaining_s = 5 * 60;
 static bool s_timer_running = false;
@@ -45,12 +47,13 @@ typedef struct {
 } PoketchPalette;
 
 typedef enum {
-  APP_COUNTER = 0,
-  APP_COIN,
-  APP_PEDOMETER,
-  APP_KITCHEN_TIMER,
-  APP_KECLEON_THEME,
-  APP_COUNT,
+  APP_MUSIC = 0,
+  APP_COUNTER = 1,
+  APP_COIN = 2,
+  APP_PEDOMETER = 3,
+  APP_KITCHEN_TIMER = 4,
+  APP_KECLEON_THEME = 5,
+  APP_COUNT = 6,
 } PoketchApp;
 
 typedef enum {
@@ -59,7 +62,7 @@ typedef enum {
   SOFTKEY_RIGHT = 2,
 } SoftKey;
 
-static PoketchApp s_active_app = APP_KECLEON_THEME;
+static PoketchApp s_active_app = APP_MUSIC;
 
 static PoketchPalette palette_get(int index) {
   switch (index) {
@@ -89,6 +92,7 @@ static GRect inset_rect(GRect r, int i) {
 
 static const char *app_name(void) {
   switch (s_active_app) {
+    case APP_MUSIC: return "Poketch - Music";
     case APP_COUNTER: return "Poketch - Counter";
     case APP_COIN: return "Poketch - Coin Flip";
     case APP_PEDOMETER: return "Poketch - Pedometer";
@@ -100,6 +104,11 @@ static const char *app_name(void) {
 
 static const char *softkey_label(SoftKey key) {
   switch (s_active_app) {
+    case APP_MUSIC:
+      if (key == SOFTKEY_MIDDLE) return s_music_playing ? "Pause" : "Play";
+      if (key == SOFTKEY_LEFT) return "Prev";
+      return "Next";
+
     case APP_COUNTER:
       if (key == SOFTKEY_LEFT) return "Reset";
       if (key == SOFTKEY_MIDDLE) return "-1";
@@ -144,6 +153,37 @@ static void flip_coin(void) {
   redraw();
 
   s_coin_timer = app_timer_register(700, finish_coin_flip, NULL);
+}
+
+typedef struct {
+  const char *title;
+  const char *artist;
+  const char *album;
+  const char *time_text;
+} MusicTrack;
+
+static const MusicTrack s_music_tracks[] = {
+  {"The Peak of Superstition", "Dance Gavin Dance", "Pantheon", "00:43 / 04:11"},
+  {"Feather", "Nujabes", "Modal Soul", "01:22 / 05:32"},
+  {"Deadbolt", "Thrice", "The Artist in the Ambulance", "02:09 / 03:00"},
+};
+
+static const int s_music_track_count = sizeof(s_music_tracks) / sizeof(s_music_tracks[0]);
+
+static void music_prev_track(void) {
+  s_music_track_index--;
+  if (s_music_track_index < 0) s_music_track_index = s_music_track_count - 1;
+  redraw();
+}
+
+static void music_next_track(void) {
+  s_music_track_index = (s_music_track_index + 1) % s_music_track_count;
+  redraw();
+}
+
+static void music_toggle_play_pause(void) {
+  s_music_playing = !s_music_playing;
+  redraw();
 }
 
 static void kitchen_timer_tick(void *context) {
@@ -212,6 +252,11 @@ static void prev_app(void) {
 
 static void run_softkey(SoftKey key) {
   switch (s_active_app) {
+    case APP_MUSIC:
+      if (key == SOFTKEY_LEFT) music_prev_track();
+      else if (key == SOFTKEY_MIDDLE) music_toggle_play_pause();
+      else if (key == SOFTKEY_RIGHT) music_next_track();
+      break;
     case APP_COUNTER:
       if (key == SOFTKEY_LEFT) s_counter = 0;
       else if (key == SOFTKEY_MIDDLE && s_counter > 0) s_counter--;
@@ -261,6 +306,8 @@ static void run_softkey(SoftKey key) {
 static void run_primary_action(void) {
   if (s_active_app == APP_COIN) {
     flip_coin();
+  } else if (s_active_app == APP_MUSIC) {
+    music_toggle_play_pause();
   } else if (s_active_app == APP_KECLEON_THEME) {
     run_softkey(SOFTKEY_MIDDLE);
   } else {
@@ -313,6 +360,7 @@ static void calculate_layout(GRect bounds) {
 static void draw_status_bar(GContext *ctx) {
   PoketchPalette palette = current_palette();
 
+
   graphics_context_set_fill_color(ctx, palette.mid);
   graphics_fill_rect(ctx, s_status_bar_rect, 0, GCornerNone);
 
@@ -343,6 +391,7 @@ static void draw_softkeys(GContext *ctx) {
     graphics_draw_rect(ctx, s_softkey_rects[i]);
 
     graphics_context_set_text_color(ctx, palette.dark);
+
 
     graphics_draw_text(ctx,
                        label,
@@ -508,6 +557,43 @@ static void draw_app_content(GContext *ctx) {
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentCenter,
                        NULL);
+  } else if (s_active_app == APP_MUSIC) {
+    const MusicTrack *track = &s_music_tracks[s_music_track_index];
+    graphics_draw_text(ctx,
+                       track->title,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                       GRect(content.origin.x + 5, content.origin.y + 27, content.size.w - 10, 30),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentLeft,
+                       NULL);
+    graphics_draw_text(ctx,
+                       track->artist,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24),
+                       GRect(content.origin.x + 5, content.origin.y + 54, content.size.w - 10, 28),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentLeft,
+                       NULL);
+    graphics_draw_text(ctx,
+                       track->album,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_OBLIQUE),
+                       GRect(content.origin.x + 5, content.origin.y + 79, content.size.w - 10, 28),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentLeft,
+                       NULL);
+    graphics_draw_text(ctx,
+                       track->time_text,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                       GRect(content.origin.x + 2, content.origin.y + content.size.h - 32, content.size.w - 4, 26),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentCenter,
+                       NULL);
+    graphics_draw_text(ctx,
+                       s_music_playing ? "PLAYING" : "PAUSED",
+                       fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(content.origin.x + 2, content.origin.y + 2, content.size.w - 4, 14),
+                       GTextOverflowModeTrailingEllipsis,
+                       GTextAlignmentRight,
+                       NULL);
   }
 
   else if (s_active_app == APP_KITCHEN_TIMER) {
@@ -604,11 +690,19 @@ static void select_long_click_handler(ClickRecognizerRef r, void *c) {
   run_softkey(SOFTKEY_LEFT);
 }
 
-static void up_click_handler(ClickRecognizerRef r, void *c) {
+static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_active_app == APP_MUSIC) {
+    music_prev_track();
+    return;
+  }
   prev_app();
 }
 
-static void down_click_handler(ClickRecognizerRef r, void *c) {
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_active_app == APP_MUSIC) {
+    music_next_track();
+    return;
+  }
   next_app();
 }
 
