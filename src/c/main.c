@@ -159,43 +159,28 @@ static void flip_coin(void) {
 }
 
 static void music_refresh_from_phone(void) {
-  MediaPlayerMetadata metadata;
-  bool has_metadata = media_player_get_metadata(&metadata);
-
-  if (has_metadata && metadata.title && metadata.title[0] != '\0') {
-    snprintf(s_music_title, sizeof(s_music_title), "%s", metadata.title);
-  } else {
-    snprintf(s_music_title, sizeof(s_music_title), "%s", "No media");
-  }
-
-  if (has_metadata && metadata.artist && metadata.artist[0] != '\0') {
-    snprintf(s_music_artist, sizeof(s_music_artist), "%s", metadata.artist);
-  } else {
-    snprintf(s_music_artist, sizeof(s_music_artist), "%s", "Open media on phone");
-  }
-
-  if (has_metadata && metadata.album && metadata.album[0] != '\0') {
-    snprintf(s_music_album, sizeof(s_music_album), "%s", metadata.album);
-  } else {
-    s_music_album[0] = '\0';
-  }
+  // Pebble C SDK does not expose pull-based metadata APIs on all targets.
+  // Keep placeholders until metadata is pushed in via phone messages.
+  snprintf(s_music_title, sizeof(s_music_title), "%s", "No media");
+  snprintf(s_music_artist, sizeof(s_music_artist), "%s", "Open media on phone");
+  s_music_album[0] = '\0';
 
 }
 
 static void music_prev_track(void) {
-  media_player_remote_command(MediaPlayerActionPreviousTrack);
+  music_player_remote_command(MusicPlayerActionPreviousTrack);
   music_refresh_from_phone();
   redraw();
 }
 
 static void music_next_track(void) {
-  media_player_remote_command(MediaPlayerActionNextTrack);
+  music_player_remote_command(MusicPlayerActionNextTrack);
   music_refresh_from_phone();
   redraw();
 }
 
 static void music_toggle_play_pause(void) {
-  media_player_remote_command(MediaPlayerActionPlayPause);
+  music_player_remote_command(MusicPlayerActionPlayPause);
   s_music_playing = !s_music_playing;
   redraw();
 }
