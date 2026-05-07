@@ -575,7 +575,7 @@ static void draw_app_content(GContext *ctx) {
                        NULL);
     graphics_draw_text(ctx,
                        track->album,
-                       fonts_get_system_font(FONT_KEY_GOTHIC_24_OBLIQUE),
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                        GRect(content.origin.x + 5, content.origin.y + 79, content.size.w - 10, 28),
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentLeft,
@@ -721,8 +721,8 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_layer, update_proc);
   layer_add_child(root, s_layer);
 
-  s_color_bar_bitmap = gbitmap_create_with_resource(RESOURCE_ID_color_bar_WHITE);
-  s_kecleon_bitmap = gbitmap_create_with_resource(RESOURCE_ID_kecleon_WHITE);
+  s_color_bar_bitmap = gbitmap_create_with_resource(RESOURCE_ID_color_bar);
+  s_kecleon_bitmap = gbitmap_create_with_resource(RESOURCE_ID_kecleon);
 
 #if defined(PBL_TOUCH)
   touch_service_subscribe(touch_handler, NULL);
