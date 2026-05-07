@@ -29,8 +29,11 @@ static int s_counter = 0;
 static int s_steps = 6190;
 static bool s_coin_heads = true;
 static bool s_coin_flipping = false;
-static int s_music_track_index = 0;
-static bool s_music_playing = true;
+static bool s_music_playing = false;
+
+static char s_music_title[64] = "No media";
+static char s_music_artist[64] = "Open media on phone";
+static char s_music_album[64] = "";
 
 static int s_timer_remaining_s = 5 * 60;
 static bool s_timer_running = false;
@@ -155,33 +158,44 @@ static void flip_coin(void) {
   s_coin_timer = app_timer_register(700, finish_coin_flip, NULL);
 }
 
-typedef struct {
-  const char *title;
-  const char *artist;
-  const char *album;
-  const char *time_text;
-} MusicTrack;
+static void music_refresh_from_phone(void) {
+  MediaPlayerMetadata metadata;
+  bool has_metadata = media_player_get_metadata(&metadata);
 
-static const MusicTrack s_music_tracks[] = {
-  {"The Peak of Superstition", "Dance Gavin Dance", "Pantheon", "00:43 / 04:11"},
-  {"Feather", "Nujabes", "Modal Soul", "01:22 / 05:32"},
-  {"Deadbolt", "Thrice", "The Artist in the Ambulance", "02:09 / 03:00"},
-};
+  if (has_metadata && metadata.title && metadata.title[0] != '\0') {
+    snprintf(s_music_title, sizeof(s_music_title), "%s", metadata.title);
+  } else {
+    snprintf(s_music_title, sizeof(s_music_title), "%s", "No media");
+  }
 
-static const int s_music_track_count = sizeof(s_music_tracks) / sizeof(s_music_tracks[0]);
+  if (has_metadata && metadata.artist && metadata.artist[0] != '\0') {
+    snprintf(s_music_artist, sizeof(s_music_artist), "%s", metadata.artist);
+  } else {
+    snprintf(s_music_artist, sizeof(s_music_artist), "%s", "Open media on phone");
+  }
+
+  if (has_metadata && metadata.album && metadata.album[0] != '\0') {
+    snprintf(s_music_album, sizeof(s_music_album), "%s", metadata.album);
+  } else {
+    s_music_album[0] = '\0';
+  }
+
+}
 
 static void music_prev_track(void) {
-  s_music_track_index--;
-  if (s_music_track_index < 0) s_music_track_index = s_music_track_count - 1;
+  media_player_remote_command(MediaPlayerActionPreviousTrack);
+  music_refresh_from_phone();
   redraw();
 }
 
 static void music_next_track(void) {
-  s_music_track_index = (s_music_track_index + 1) % s_music_track_count;
+  media_player_remote_command(MediaPlayerActionNextTrack);
+  music_refresh_from_phone();
   redraw();
 }
 
 static void music_toggle_play_pause(void) {
+  media_player_remote_command(MediaPlayerActionPlayPause);
   s_music_playing = !s_music_playing;
   redraw();
 }
@@ -558,30 +572,30 @@ static void draw_app_content(GContext *ctx) {
                        GTextAlignmentCenter,
                        NULL);
   } else if (s_active_app == APP_MUSIC) {
-    const MusicTrack *track = &s_music_tracks[s_music_track_index];
+    music_refresh_from_phone();
     graphics_draw_text(ctx,
-                       track->title,
+                       s_music_title,
                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                        GRect(content.origin.x + 5, content.origin.y + 27, content.size.w - 10, 30),
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentLeft,
                        NULL);
     graphics_draw_text(ctx,
-                       track->artist,
+                       s_music_artist,
                        fonts_get_system_font(FONT_KEY_GOTHIC_24),
                        GRect(content.origin.x + 5, content.origin.y + 54, content.size.w - 10, 28),
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentLeft,
                        NULL);
     graphics_draw_text(ctx,
-                       track->album,
+                       s_music_album,
                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                        GRect(content.origin.x + 5, content.origin.y + 79, content.size.w - 10, 28),
                        GTextOverflowModeTrailingEllipsis,
                        GTextAlignmentLeft,
                        NULL);
     graphics_draw_text(ctx,
-                       track->time_text,
+                       s_music_playing ? "Playing" : "Paused",
                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                        GRect(content.origin.x + 2, content.origin.y + content.size.h - 32, content.size.w - 4, 26),
                        GTextOverflowModeTrailingEllipsis,
@@ -691,18 +705,10 @@ static void select_long_click_handler(ClickRecognizerRef r, void *c) {
 }
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  if (s_active_app == APP_MUSIC) {
-    music_prev_track();
-    return;
-  }
   prev_app();
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  if (s_active_app == APP_MUSIC) {
-    music_next_track();
-    return;
-  }
   next_app();
 }
 
@@ -760,6 +766,8 @@ static void window_unload(Window *window) {
 
 static void init(void) {
   srand(time(NULL));
+
+  music_refresh_from_phone();
 
   s_window = window_create();
 
