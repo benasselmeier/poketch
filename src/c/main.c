@@ -159,8 +159,8 @@ static void flip_coin(void) {
 }
 
 static void music_refresh_from_phone(void) {
-  MusicMetadata metadata;
-  bool has_metadata = music_player_get_metadata(&metadata);
+  MediaPlayerMetadata metadata;
+  bool has_metadata = media_player_get_metadata(&metadata);
 
   if (has_metadata && metadata.title && metadata.title[0] != '\0') {
     snprintf(s_music_title, sizeof(s_music_title), "%s", metadata.title);
@@ -180,24 +180,23 @@ static void music_refresh_from_phone(void) {
     s_music_album[0] = '\0';
   }
 
-  s_music_playing = music_player_is_playing();
 }
 
 static void music_prev_track(void) {
-  music_player_prev();
+  media_player_remote_command(MediaPlayerActionPreviousTrack);
   music_refresh_from_phone();
   redraw();
 }
 
 static void music_next_track(void) {
-  music_player_next();
+  media_player_remote_command(MediaPlayerActionNextTrack);
   music_refresh_from_phone();
   redraw();
 }
 
 static void music_toggle_play_pause(void) {
-  music_player_play_pause();
-  s_music_playing = music_player_is_playing();
+  media_player_remote_command(MediaPlayerActionPlayPause);
+  s_music_playing = !s_music_playing;
   redraw();
 }
 
