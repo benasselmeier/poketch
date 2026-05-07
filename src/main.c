@@ -47,7 +47,6 @@ typedef struct {
 } PoketchPalette;
 
 typedef enum {
-typedef enum {
   APP_MUSIC = 0,
   APP_COUNTER = 1,
   APP_COIN = 2,
