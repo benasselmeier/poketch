@@ -326,12 +326,39 @@ static void update_proc(Layer *layer, GContext *ctx) {
 }
 
 #if defined(PBL_TOUCH)
+
+static bool is_touch_begin(const TouchEvent *event) {
+#if defined(TOUCH_EVENT_TYPE_BEGIN)
+  return event->type == TOUCH_EVENT_TYPE_BEGIN;
+#elif defined(TOUCH_EVENT_TYPE_DOWN)
+  return event->type == TOUCH_EVENT_TYPE_DOWN;
+#else
+  return true;
+#endif
+}
+
+static bool is_touch_end_or_abort(const TouchEvent *event) {
+#if defined(TOUCH_EVENT_TYPE_END) && defined(TOUCH_EVENT_TYPE_ABORT)
+  return event->type == TOUCH_EVENT_TYPE_END ||
+         event->type == TOUCH_EVENT_TYPE_ABORT;
+#elif defined(TOUCH_EVENT_TYPE_UP) && defined(TOUCH_EVENT_TYPE_CANCEL)
+  return event->type == TOUCH_EVENT_TYPE_UP ||
+         event->type == TOUCH_EVENT_TYPE_CANCEL;
+#elif defined(TOUCH_EVENT_TYPE_END)
+  return event->type == TOUCH_EVENT_TYPE_END;
+#elif defined(TOUCH_EVENT_TYPE_UP)
+  return event->type == TOUCH_EVENT_TYPE_UP;
+#else
+  return false;
+#endif
+}
+
 static void touch_handler(const TouchEvent *event, void *context) {
   if (!event) return;
 
   GPoint pt = GPoint(event->x, event->y);
 
-  if (event->type == TOUCH_EVENT_TYPE_BEGIN) {
+  if (is_touch_begin(event)) {
     uint32_t now = now_millis();
 
     if (now - s_last_touch_action_ms < 250) return;
@@ -358,8 +385,7 @@ static void touch_handler(const TouchEvent *event, void *context) {
     }
   }
 
-  if (event->type == TOUCH_EVENT_TYPE_END ||
-      event->type == TOUCH_EVENT_TYPE_ABORT) {
+  if (is_touch_end_or_abort(event)) {
     if (s_counter_hold_timer) {
       app_timer_cancel(s_counter_hold_timer);
       s_counter_hold_timer = NULL;
