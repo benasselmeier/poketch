@@ -1,45 +1,37 @@
 #include <pebble.h>
+#include "forces_recorder.h"
+#include "ride_data.h"
+#include "parks.h"
 
-#define SHOW_SIDE_APP_BUTTONS 0
 #define PALETTE_COUNT 8
 
 static Window *s_window;
 static Layer *s_layer;
-static AppTimer *s_kitchen_timer;
-static AppTimer *s_coin_timer;
-
-static GBitmap *s_color_bar_bitmap;
-static GBitmap *s_kecleon_bitmap;
+static AppTimer *s_tick_timer;
 
 static GRect s_status_bar_rect;
 static GRect s_viewport_rect;
 static GRect s_softkey_dock_rect;
 static GRect s_softkey_rects[3];
 
-#if defined(PBL_PLATFORM_EMERY) && SHOW_SIDE_APP_BUTTONS
-static GRect s_prev_app_button_rect;
-static GRect s_next_app_button_rect;
-#endif
-
 #if defined(PBL_TOUCH)
 static uint32_t s_last_touch_action_ms = 0;
 #endif
 
-static int s_counter = 0;
-static int s_steps = 6190;
-static bool s_coin_heads = true;
-static bool s_coin_flipping = false;
-static bool s_music_playing = false;
+// App state machine
+typedef enum {
+  STATE_PARK_SELECT = 0,
+  STATE_COASTER_SELECT = 1,
+  STATE_RECORDING = 2,
+  STATE_RIDE_HISTORY = 3,
+} AppState;
 
-static char s_music_title[64] = "No media";
-static char s_music_artist[64] = "Open media on phone";
-static char s_music_album[64] = "";
-
-static int s_timer_remaining_s = 5 * 60;
-static bool s_timer_running = false;
+static AppState s_state = STATE_PARK_SELECT;
+static int s_park_idx = 0;
+static int s_coaster_idx = 0;
+static int s_history_idx = 0;
 
 static int s_active_palette = 0;
-static int s_preview_palette = 0;
 
 typedef struct {
   const char *name;
@@ -48,24 +40,6 @@ typedef struct {
   GColor mid;
   GColor dark;
 } PoketchPalette;
-
-typedef enum {
-  APP_MUSIC = 0,
-  APP_COUNTER = 1,
-  APP_COIN = 2,
-  APP_PEDOMETER = 3,
-  APP_KITCHEN_TIMER = 4,
-  APP_KECLEON_THEME = 5,
-  APP_COUNT = 6,
-} PoketchApp;
-
-typedef enum {
-  SOFTKEY_LEFT = 0,
-  SOFTKEY_MIDDLE = 1,
-  SOFTKEY_RIGHT = 2,
-} SoftKey;
-
-static PoketchApp s_active_app = APP_MUSIC;
 
 static PoketchPalette palette_get(int index) {
   switch (index) {
@@ -94,227 +68,103 @@ static GRect inset_rect(GRect r, int i) {
 }
 
 static const char *app_name(void) {
-  switch (s_active_app) {
-    case APP_MUSIC: return "Poketch - Music";
-    case APP_COUNTER: return "Poketch - Counter";
-    case APP_COIN: return "Poketch - Coin Flip";
-    case APP_PEDOMETER: return "Poketch - Pedometer";
-    case APP_KITCHEN_TIMER: return "Poketch - Timer";
-    case APP_KECLEON_THEME: return "Poketch - Kecleon";
-    default: return "Poketch";
+  return "Ride Forces Recorder";
+}
+
+static const char *softkey_label(int key) {
+  if (s_state == STATE_PARK_SELECT) {
+    if (key == 0) return ""; // Left
+    if (key == 1) return "SELECT"; // Middle
+    return ""; // Right
+  } else if (s_state == STATE_COASTER_SELECT) {
+    if (key == 0) return "BACK"; // Left
+    if (key == 1) return "SELECT"; // Middle
+    return ""; // Right
+  } else if (s_state == STATE_RECORDING) {
+    if (key == 0) return "STOP"; // Left
+    if (key == 1) return forces_recorder_is_recording() ? "PAUSE" : "REC"; // Middle
+    return ""; // Right
+  } else if (s_state == STATE_RIDE_HISTORY) {
+    if (key == 0) return "BACK"; // Left
+    if (key == 1) return "SELECT"; // Middle
+    return ""; // Right
   }
+  return "";
 }
 
-static const char *softkey_label(SoftKey key) {
-  switch (s_active_app) {
-    case APP_MUSIC:
-      if (key == SOFTKEY_MIDDLE) return s_music_playing ? "Pause" : "Play";
-      if (key == SOFTKEY_LEFT) return "Prev";
-      return "Next";
-
-    case APP_COUNTER:
-      if (key == SOFTKEY_LEFT) return "Reset";
-      if (key == SOFTKEY_MIDDLE) return "-1";
-      return "+1";
-
-    case APP_COIN:
-      if (key == SOFTKEY_MIDDLE) return s_coin_flipping ? "..." : "Flip";
-      return "";
-
-    case APP_PEDOMETER:
-      if (key == SOFTKEY_LEFT) return "Reset";
-      if (key == SOFTKEY_MIDDLE) return "-10";
-      return "+10";
-
-    case APP_KITCHEN_TIMER:
-      if (key == SOFTKEY_LEFT) return "Reset";
-      if (key == SOFTKEY_MIDDLE) return s_timer_running ? "Stop" : "Start";
-      return "+1m";
-
-    case APP_KECLEON_THEME:
-      if (key == SOFTKEY_LEFT) return "Prev";
-      if (key == SOFTKEY_MIDDLE) return "Apply";
-      return "Next";
-
-    default:
-      return "";
-  }
-}
-
-static void finish_coin_flip(void *context) {
-  s_coin_flipping = false;
-  s_coin_heads = rand() % 2;
-  s_coin_timer = NULL;
-  vibes_short_pulse();
+// State handlers
+static void enter_park_select(void) {
+  s_state = STATE_PARK_SELECT;
+  s_park_idx = 0;
   redraw();
 }
 
-static void flip_coin(void) {
-  if (s_coin_flipping) return;
-
-  s_coin_flipping = true;
-  redraw();
-
-  s_coin_timer = app_timer_register(700, finish_coin_flip, NULL);
-}
-
-static void music_refresh_from_phone(void) {
-  // Pebble C SDK does not expose pull-based metadata APIs on all targets.
-  // Keep placeholders until metadata is pushed in via phone messages.
-  snprintf(s_music_title, sizeof(s_music_title), "%s", "No media");
-  snprintf(s_music_artist, sizeof(s_music_artist), "%s", "Open media on phone");
-  s_music_album[0] = '\0';
-
-}
-
-static void music_prev_track(void) {
-  // This Pebble SDK build does not expose a native music transport API.
-  // Keep the control responsive, but do not call unsupported symbols.
-  vibes_short_pulse();
-  music_refresh_from_phone();
+static void enter_coaster_select(void) {
+  s_state = STATE_COASTER_SELECT;
+  s_coaster_idx = 0;
   redraw();
 }
 
-static void music_next_track(void) {
-  vibes_short_pulse();
-  music_refresh_from_phone();
+static void enter_recording(void) {
+  s_state = STATE_RECORDING;
+  forces_recorder_start();
+  s_tick_timer = app_timer_register(500, NULL, NULL);
   redraw();
 }
 
-static void music_toggle_play_pause(void) {
-  s_music_playing = !s_music_playing;
-  vibes_short_pulse();
+static void enter_history(void) {
+  s_state = STATE_RIDE_HISTORY;
+  s_history_idx = 0;
   redraw();
 }
 
-static void kitchen_timer_tick(void *context) {
-  if (!s_timer_running) return;
-
-  if (s_timer_remaining_s > 0) s_timer_remaining_s--;
-
-  if (s_timer_remaining_s > 0) {
-    s_kitchen_timer = app_timer_register(1000, kitchen_timer_tick, NULL);
-  } else {
-    s_timer_running = false;
-    s_kitchen_timer = NULL;
-    vibes_short_pulse();
-  }
-
-  redraw();
-}
-
-static void toggle_kitchen_timer(void) {
-  s_timer_running = !s_timer_running;
-
-  if (s_timer_running) {
-    s_kitchen_timer = app_timer_register(1000, kitchen_timer_tick, NULL);
-  } else if (s_kitchen_timer) {
-    app_timer_cancel(s_kitchen_timer);
-    s_kitchen_timer = NULL;
-  }
-
-  redraw();
-}
-
-static void reset_kitchen_timer(void) {
-  s_timer_running = false;
-  s_timer_remaining_s = 5 * 60;
-
-  if (s_kitchen_timer) {
-    app_timer_cancel(s_kitchen_timer);
-    s_kitchen_timer = NULL;
-  }
-
-  redraw();
-}
-
-static void next_app(void) {
-  s_active_app = (s_active_app + 1) % APP_COUNT;
-
-  if (s_active_app == APP_KECLEON_THEME) {
-    s_preview_palette = s_active_palette;
-  }
-
-  redraw();
-}
-
-static void prev_app(void) {
-  int next = (int)s_active_app - 1;
-  if (next < 0) next = APP_COUNT - 1;
-
-  s_active_app = next;
-
-  if (s_active_app == APP_KECLEON_THEME) {
-    s_preview_palette = s_active_palette;
-  }
-
-  redraw();
-}
-
-static void run_softkey(SoftKey key) {
-  switch (s_active_app) {
-    case APP_MUSIC:
-      if (key == SOFTKEY_LEFT) music_prev_track();
-      else if (key == SOFTKEY_MIDDLE) music_toggle_play_pause();
-      else if (key == SOFTKEY_RIGHT) music_next_track();
-      break;
-    case APP_COUNTER:
-      if (key == SOFTKEY_LEFT) s_counter = 0;
-      else if (key == SOFTKEY_MIDDLE && s_counter > 0) s_counter--;
-      else if (key == SOFTKEY_RIGHT) s_counter++;
-      break;
-
-    case APP_COIN:
-      if (key == SOFTKEY_MIDDLE) flip_coin();
-      break;
-
-    case APP_PEDOMETER:
-      if (key == SOFTKEY_LEFT) s_steps = 0;
-      else if (key == SOFTKEY_MIDDLE) {
-        s_steps -= 10;
-        if (s_steps < 0) s_steps = 0;
-      } else if (key == SOFTKEY_RIGHT) {
-        s_steps += 10;
+// Actions for each state
+static void softkey_action(int key) {
+  if (s_state == STATE_PARK_SELECT) {
+    if (key == 1) { // SELECT
+      enter_coaster_select();
+    }
+  } else if (s_state == STATE_COASTER_SELECT) {
+    if (key == 0) { // BACK
+      enter_park_select();
+    } else if (key == 1) { // SELECT
+      enter_recording();
+    }
+  } else if (s_state == STATE_RECORDING) {
+    if (key == 0) { // STOP
+      forces_recorder_stop();
+      // Save ride
+      Park *park = parks_get(s_park_idx);
+      Coaster *coaster = parks_get_coaster(s_park_idx, s_coaster_idx);
+      if (park && coaster) {
+        RideRecord ride = {
+          .park = {0},
+          .coaster = {0},
+          .duration_s = forces_recorder_get_elapsed_s(),
+          .max_g = forces_recorder_get_max_g(),
+          .min_g = forces_recorder_get_min_g(),
+          .timestamp = time(NULL),
+        };
+        strcpy(ride.park, park->name);
+        strcpy(ride.coaster, coaster->name);
+        ride_data_add(&ride);
       }
-      break;
-
-    case APP_KITCHEN_TIMER:
-      if (key == SOFTKEY_LEFT) reset_kitchen_timer();
-      else if (key == SOFTKEY_MIDDLE) toggle_kitchen_timer();
-      else if (key == SOFTKEY_RIGHT) s_timer_remaining_s += 60;
-      break;
-
-    case APP_KECLEON_THEME:
-      if (key == SOFTKEY_LEFT) {
-        s_preview_palette--;
-        if (s_preview_palette < 0) s_preview_palette = PALETTE_COUNT - 1;
-      } else if (key == SOFTKEY_RIGHT) {
-        s_preview_palette++;
-        if (s_preview_palette >= PALETTE_COUNT) s_preview_palette = 0;
-      } else if (key == SOFTKEY_MIDDLE) {
-        s_active_palette = s_preview_palette;
-        vibes_short_pulse();
+      enter_history();
+    } else if (key == 1) { // PAUSE/REC
+      if (forces_recorder_is_recording()) {
+        forces_recorder_stop();
+      } else {
+        forces_recorder_start();
       }
-      break;
-
-    default:
-      break;
-  }
-
-  redraw();
-}
-
-static void run_primary_action(void) {
-  if (s_active_app == APP_COIN) {
-    flip_coin();
-  } else if (s_active_app == APP_MUSIC) {
-    music_toggle_play_pause();
-  } else if (s_active_app == APP_KECLEON_THEME) {
-    run_softkey(SOFTKEY_MIDDLE);
-  } else {
-    run_softkey(SOFTKEY_RIGHT);
+      redraw();
+    }
+  } else if (s_state == STATE_RIDE_HISTORY) {
+    if (key == 0) { // BACK
+      enter_park_select();
+    }
   }
 }
+
 
 #if defined(PBL_TOUCH)
 static uint32_t now_millis(void) {
@@ -383,7 +233,7 @@ static void draw_softkeys(GContext *ctx) {
   graphics_fill_rect(ctx, s_softkey_dock_rect, 0, GCornerNone);
 
   for (int i = 0; i < 3; i++) {
-    const char *label = softkey_label((SoftKey)i);
+    const char *label = softkey_label(i);
 
     graphics_context_set_fill_color(ctx, palette.light);
     graphics_fill_rect(ctx, s_softkey_rects[i], 0, GCornerNone);
@@ -392,7 +242,6 @@ static void draw_softkeys(GContext *ctx) {
     graphics_draw_rect(ctx, s_softkey_rects[i]);
 
     graphics_context_set_text_color(ctx, palette.dark);
-
 
     graphics_draw_text(ctx,
                        label,
@@ -405,216 +254,135 @@ static void draw_softkeys(GContext *ctx) {
 }
 
 static void draw_side_buttons(GContext *ctx) {
-#if defined(PBL_PLATFORM_EMERY) && SHOW_SIDE_APP_BUTTONS
-  int red_w = s_viewport_rect.size.w / 6;
-  if (red_w < 28) red_w = 28;
-  if (red_w > 40) red_w = 40;
-
-  int gap = 6;
-  int total_h = s_viewport_rect.size.h - gap;
-  int red_h = total_h / 2;
-
-  int red_x = s_viewport_rect.origin.x +
-              s_viewport_rect.size.w - red_w - 2;
-
-  int red_top_y = s_viewport_rect.origin.y;
-  int red_bottom_y = red_top_y + red_h + gap;
-
-  s_prev_app_button_rect = GRect(red_x, red_top_y, red_w, red_h);
-  s_next_app_button_rect = GRect(red_x, red_bottom_y, red_w, red_h);
-
-  graphics_context_set_fill_color(ctx, GColorDarkGray);
-
-  graphics_fill_rect(ctx, s_prev_app_button_rect, 10,
-                     GCornerTopLeft | GCornerBottomLeft);
-
-  graphics_fill_rect(ctx, s_next_app_button_rect, 10,
-                     GCornerTopLeft | GCornerBottomLeft);
-
-  GRect prev_inner = inset_rect(s_prev_app_button_rect, 2);
-  GRect next_inner = inset_rect(s_next_app_button_rect, 2);
-
-  graphics_context_set_fill_color(ctx, GColorRed);
-
-  graphics_fill_rect(ctx, prev_inner, 8,
-                     GCornerTopLeft | GCornerBottomLeft);
-
-  graphics_fill_rect(ctx, next_inner, 8,
-                     GCornerTopLeft | GCornerBottomLeft);
-#endif
-}
-
-static void draw_kecleon_theme_app(GContext *ctx, GRect content) {
-  PoketchPalette preview = palette_get(s_preview_palette);
-
-  GRect preview_area = inset_rect(content, 4);
-
-  graphics_context_set_fill_color(ctx, preview.bg);
-  graphics_fill_rect(ctx, preview_area, 0, GCornerNone);
-
-  graphics_context_set_stroke_color(ctx, preview.dark);
-  graphics_draw_rect(ctx, preview_area);
-
-  if (s_kecleon_bitmap) {
-    graphics_draw_bitmap_in_rect(ctx,
-                                 s_kecleon_bitmap,
-                                 GRect(content.origin.x + 18,
-                                       content.origin.y + 8,
-                                       64,
-                                       64));
-  }
-
-  if (s_color_bar_bitmap) {
-    graphics_draw_bitmap_in_rect(ctx,
-                                 s_color_bar_bitmap,
-                                 GRect(content.origin.x + 18,
-                                       content.origin.y + 75,
-                                       120,
-                                       20));
-  }
-
-  graphics_context_set_text_color(ctx, preview.dark);
-
-  graphics_draw_text(ctx,
-                     preview.name,
-                     fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-                     GRect(content.origin.x,
-                           content.origin.y + 96,
-                           content.size.w,
-                           22),
-                     GTextOverflowModeTrailingEllipsis,
-                     GTextAlignmentCenter,
-                     NULL);
-
-  if (s_preview_palette == s_active_palette) {
-    graphics_draw_text(ctx,
-                       "ACTIVE",
-                       fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
-                       GRect(content.origin.x,
-                             content.origin.y + 114,
-                             content.size.w,
-                             18),
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentCenter,
-                       NULL);
-  }
+  // Removed for cleaner UI
 }
 
 static void draw_app_content(GContext *ctx) {
   PoketchPalette palette = current_palette();
-
   GRect content = inset_rect(s_viewport_rect, 8);
-
-#if defined(PBL_PLATFORM_EMERY) && SHOW_SIDE_APP_BUTTONS
-  content.size.w -= 34;
-#endif
 
   graphics_context_set_text_color(ctx, palette.dark);
 
-  if (s_active_app == APP_COUNTER ||
-      s_active_app == APP_PEDOMETER) {
+  if (s_state == STATE_PARK_SELECT) {
+    // Draw park list with scrolling
+    int start_idx = s_park_idx;
+    char buf[128];
 
-    int value = (s_active_app == APP_COUNTER)
-      ? s_counter
-      : s_steps;
+    snprintf(buf, sizeof(buf), "PARK %d/%d", s_park_idx + 1, parks_get_count());
+    graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+                       GRect(content.origin.x, content.origin.y + 8, content.size.w, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
-    char value_buf[16];
-    snprintf(value_buf, sizeof(value_buf), "%d", value);
+    Park *park = parks_get(start_idx);
+    if (park) {
+      graphics_draw_text(ctx, park->name, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
+                         GRect(content.origin.x + 4, content.origin.y + 30, content.size.w - 8, 60),
+                         GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
-    graphics_draw_text(ctx,
-                       value_buf,
-                       fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD),
-                       GRect(content.origin.x,
-                             content.origin.y + 18,
-                             content.size.w,
-                             50),
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentCenter,
-                       NULL);
-
-    if (s_active_app == APP_PEDOMETER) {
-      graphics_draw_text(ctx,
-                         "STEPS",
-                         fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
-                         GRect(content.origin.x,
-                               content.origin.y + 62,
-                               content.size.w,
-                               34),
-                         GTextOverflowModeTrailingEllipsis,
-                         GTextAlignmentCenter,
-                         NULL);
+      snprintf(buf, sizeof(buf), "%d Coasters", park->coaster_count);
+      graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                         GRect(content.origin.x + 4, content.origin.y + 95, content.size.w - 8, 20),
+                         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
     }
-  }
 
-  else if (s_active_app == APP_COIN) {
-    const char *coin_text = s_coin_flipping
-      ? "FLIPPING..."
-      : (s_coin_heads ? "HEADS" : "TAILS");
+  } else if (s_state == STATE_COASTER_SELECT) {
+    Park *park = parks_get(s_park_idx);
+    if (park) {
+      char buf[128];
+      snprintf(buf, sizeof(buf), "%d/%d", s_coaster_idx + 1, park->coaster_count);
+      graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+                         GRect(content.origin.x, content.origin.y + 8, content.size.w, 16),
+                         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
-    graphics_draw_text(ctx,
-                       coin_text,
-                       fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
-                       content,
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentCenter,
-                       NULL);
-  } else if (s_active_app == APP_MUSIC) {
-    music_refresh_from_phone();
-    graphics_draw_text(ctx,
-                       s_music_title,
-                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                       GRect(content.origin.x + 5, content.origin.y + 27, content.size.w - 10, 30),
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentLeft,
-                       NULL);
-    graphics_draw_text(ctx,
-                       s_music_artist,
-                       fonts_get_system_font(FONT_KEY_GOTHIC_24),
-                       GRect(content.origin.x + 5, content.origin.y + 54, content.size.w - 10, 28),
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentLeft,
-                       NULL);
-    graphics_draw_text(ctx,
-                       s_music_album,
-                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                       GRect(content.origin.x + 5, content.origin.y + 79, content.size.w - 10, 28),
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentLeft,
-                       NULL);
-    graphics_draw_text(ctx,
-                       s_music_playing ? "Playing" : "Paused",
-                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                       GRect(content.origin.x + 2, content.origin.y + content.size.h - 32, content.size.w - 4, 26),
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentCenter,
-                       NULL);
-    graphics_draw_text(ctx,
-                       s_music_playing ? "PLAYING" : "PAUSED",
-                       fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                       GRect(content.origin.x + 2, content.origin.y + 2, content.size.w - 4, 14),
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentRight,
-                       NULL);
-  }
+      Coaster *coaster = parks_get_coaster(s_park_idx, s_coaster_idx);
+      if (coaster) {
+        graphics_draw_text(ctx, coaster->name, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                           GRect(content.origin.x + 4, content.origin.y + 30, content.size.w - 8, 50),
+                           GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
-  else if (s_active_app == APP_KITCHEN_TIMER) {
-    int min = s_timer_remaining_s / 60;
-    int sec = s_timer_remaining_s % 60;
+        const char *type_str = coaster->type == COASTER_TYPE_WOOD ? "Wood" : "Steel";
+        graphics_draw_text(ctx, type_str, fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                           GRect(content.origin.x + 4, content.origin.y + 85, content.size.w - 8, 20),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      }
+    }
 
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%02d:%02d", min, sec);
+  } else if (s_state == STATE_RECORDING) {
+    char buf[64];
+    uint32_t elapsed = forces_recorder_get_elapsed_s();
+    uint16_t max_g = forces_recorder_get_max_g();
+    uint16_t min_g = forces_recorder_get_min_g();
+    ForceReading reading = forces_recorder_get_current();
 
-    graphics_draw_text(ctx,
-                       buf,
-                       fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD),
-                       content,
-                       GTextOverflowModeTrailingEllipsis,
-                       GTextAlignmentCenter,
-                       NULL);
-  }
+    // Coaster name
+    Coaster *coaster = parks_get_coaster(s_park_idx, s_coaster_idx);
+    if (coaster) {
+      graphics_draw_text(ctx, coaster->name, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+                         GRect(content.origin.x, content.origin.y + 2, content.size.w, 18),
+                         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    }
 
-  else if (s_active_app == APP_KECLEON_THEME) {
-    draw_kecleon_theme_app(ctx, content);
+    // Elapsed time
+    snprintf(buf, sizeof(buf), "%02lu:%02lu", (unsigned long)(elapsed / 60), (unsigned long)(elapsed % 60));
+    graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD),
+                       GRect(content.origin.x, content.origin.y + 22, content.size.w, 48),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+    // Current G-force (green)
+    graphics_context_set_text_color(ctx, GColorGreen);
+    snprintf(buf, sizeof(buf), "%.2f g", reading.magnitude / 1000.0f);
+    graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                       GRect(content.origin.x, content.origin.y + 70, content.size.w, 24),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+    graphics_context_set_text_color(ctx, palette.dark);
+
+    // Max/Min
+    snprintf(buf, sizeof(buf), "Max: %.2f", max_g / 1000.0f);
+    graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(content.origin.x, content.origin.y + 98, content.size.w / 2, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+    snprintf(buf, sizeof(buf), "Min: %.2f", min_g / 1000.0f);
+    graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(content.origin.x + content.size.w / 2, content.origin.y + 98, content.size.w / 2, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
+
+  } else if (s_state == STATE_RIDE_HISTORY) {
+    int ride_count = ride_data_count();
+    if (ride_count == 0) {
+      graphics_draw_text(ctx, "No rides recorded yet", fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                         content, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+    } else {
+      RideRecord *ride = ride_data_get(s_history_idx);
+      if (ride) {
+        char buf[128];
+
+        snprintf(buf, sizeof(buf), "RIDE %d/%d", s_history_idx + 1, ride_count);
+        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+                           GRect(content.origin.x, content.origin.y + 2, content.size.w, 16),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+        graphics_draw_text(ctx, ride->coaster, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+                           GRect(content.origin.x + 4, content.origin.y + 20, content.size.w - 8, 30),
+                           GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+
+        snprintf(buf, sizeof(buf), "%lu sec", (unsigned long)ride->duration_s);
+        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                           GRect(content.origin.x, content.origin.y + 52, content.size.w, 20),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+        snprintf(buf, sizeof(buf), "Max: %.2f g", ride->max_g / 1000.0f);
+        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                           GRect(content.origin.x, content.origin.y + 75, content.size.w, 18),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+        snprintf(buf, sizeof(buf), "Min: %.2f g", ride->min_g / 1000.0f);
+        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                           GRect(content.origin.x, content.origin.y + 95, content.size.w, 18),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      }
+    }
   }
 }
 
@@ -656,27 +424,14 @@ static void touch_handler(const TouchEvent *event, void *context) {
   if (!event) return;
 
   uint32_t now = now_millis();
-
   if (now - s_last_touch_action_ms < 250) return;
   s_last_touch_action_ms = now;
 
   GPoint pt = GPoint(event->x, event->y);
 
-#if defined(PBL_PLATFORM_EMERY) && SHOW_SIDE_APP_BUTTONS
-  if (grect_contains_point(&s_prev_app_button_rect, &pt)) {
-    prev_app();
-    return;
-  }
-
-  if (grect_contains_point(&s_next_app_button_rect, &pt)) {
-    next_app();
-    return;
-  }
-#endif
-
   for (int i = 0; i < 3; i++) {
     if (grect_contains_point(&s_softkey_rects[i], &pt)) {
-      run_softkey((SoftKey)i);
+      softkey_action(i);
       return;
     }
   }
@@ -684,19 +439,38 @@ static void touch_handler(const TouchEvent *event, void *context) {
 #endif
 
 static void select_click_handler(ClickRecognizerRef r, void *c) {
-  run_primary_action();
+  softkey_action(1);  // Middle softkey
 }
 
 static void select_long_click_handler(ClickRecognizerRef r, void *c) {
-  run_softkey(SOFTKEY_LEFT);
+  softkey_action(0);  // Left softkey
 }
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  prev_app();
+  // Navigate up/prev in current state
+  if (s_state == STATE_PARK_SELECT) {
+    if (s_park_idx > 0) s_park_idx--;
+  } else if (s_state == STATE_COASTER_SELECT) {
+    Park *park = parks_get(s_park_idx);
+    if (park && s_coaster_idx > 0) s_coaster_idx--;
+  } else if (s_state == STATE_RIDE_HISTORY) {
+    if (s_history_idx > 0) s_history_idx--;
+  }
+  redraw();
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  next_app();
+  // Navigate down/next in current state
+  if (s_state == STATE_PARK_SELECT) {
+    if (s_park_idx < parks_get_count() - 1) s_park_idx++;
+  } else if (s_state == STATE_COASTER_SELECT) {
+    Park *park = parks_get(s_park_idx);
+    if (park && s_coaster_idx < park->coaster_count - 1) s_coaster_idx++;
+  } else if (s_state == STATE_RIDE_HISTORY) {
+    int ride_count = ride_data_count();
+    if (ride_count > 0 && s_history_idx < ride_count - 1) s_history_idx++;
+  }
+  redraw();
 }
 
 static void click_config_provider(void *context) {
@@ -714,12 +488,15 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_layer, update_proc);
   layer_add_child(root, s_layer);
 
-  s_color_bar_bitmap = gbitmap_create_with_resource(RESOURCE_ID_color_bar);
-  s_kecleon_bitmap = gbitmap_create_with_resource(RESOURCE_ID_kecleon);
-
 #if defined(PBL_TOUCH)
   touch_service_subscribe(touch_handler, NULL);
 #endif
+
+  // Initialize app
+  parks_init();
+  ride_data_init();
+  forces_recorder_init();
+  enter_park_select();
 }
 
 static void window_unload(Window *window) {
@@ -727,24 +504,13 @@ static void window_unload(Window *window) {
   touch_service_unsubscribe();
 #endif
 
-  if (s_kitchen_timer) {
-    app_timer_cancel(s_kitchen_timer);
-    s_kitchen_timer = NULL;
-  }
+  forces_recorder_deinit();
+  ride_data_deinit();
+  parks_deinit();
 
-  if (s_coin_timer) {
-    app_timer_cancel(s_coin_timer);
-    s_coin_timer = NULL;
-  }
-
-  if (s_color_bar_bitmap) {
-    gbitmap_destroy(s_color_bar_bitmap);
-    s_color_bar_bitmap = NULL;
-  }
-
-  if (s_kecleon_bitmap) {
-    gbitmap_destroy(s_kecleon_bitmap);
-    s_kecleon_bitmap = NULL;
+  if (s_tick_timer) {
+    app_timer_cancel(s_tick_timer);
+    s_tick_timer = NULL;
   }
 
   layer_destroy(s_layer);
@@ -754,8 +520,6 @@ static void window_unload(Window *window) {
 static void init(void) {
   srand(time(NULL));
 
-  music_refresh_from_phone();
-
   s_window = window_create();
 
   window_set_window_handlers(s_window, (WindowHandlers) {
@@ -763,8 +527,7 @@ static void init(void) {
     .unload = window_unload,
   });
 
-  window_set_click_config_provider(s_window,
-                                   click_config_provider);
+  window_set_click_config_provider(s_window, click_config_provider);
 
   window_stack_push(s_window, true);
 }
