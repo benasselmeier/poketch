@@ -1,0 +1,45 @@
+{
+    "author": "Homebrew",
+    "dependencies": {},
+    "keywords": [
+        "pebble-app"
+    ],
+    "name": "poketch",
+    "pebble": {
+        "displayName": "Poketch App",
+        "enableMultiJS": false,
+        "messageKeys": {},
+        "projectType": "native",
+        "resources": {
+            "media": [
+                {
+                    "file": "images/color-picker-bar.png",
+                    "name": "color_bar",
+                    "targetPlatforms": null,
+                    "type": "png"
+                },
+                {
+                    "file": "images/kecleon.png",
+                    "name": "kecleon",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                }
+            ]
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk",
+            "diorite",
+            "emery",
+            "flint",
+            "gabbro"
+        ],
+        "uuid": "0e5f3a6b-9c1d-4f2a-ae77-123456789abc",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
