@@ -115,6 +115,23 @@ static void parks_init_hardcoded(void) {
   strcpy(park->coasters[park->coaster_count].name, "Twisted Cyclone");
   park->coasters[park->coaster_count].type = COASTER_TYPE_STEEL;
   park->coaster_count++;
+
+  // Fun Spot Atlanta
+  park = &s_parks[s_park_count++];
+  strcpy(park->name, "Fun Spot Atlanta");
+  park->coaster_count = 0;
+
+  strcpy(park->coasters[park->coaster_count].name, "ArieForce One");
+  park->coasters[park->coaster_count].type = COASTER_TYPE_STEEL;
+  park->coaster_count++;
+
+  strcpy(park->coasters[park->coaster_count].name, "Hurricane Coaster");
+  park->coasters[park->coaster_count].type = COASTER_TYPE_STEEL;
+  park->coaster_count++;
+
+  strcpy(park->coasters[park->coaster_count].name, "Sea Serpent");
+  park->coasters[park->coaster_count].type = COASTER_TYPE_STEEL;
+  park->coaster_count++;
 }
 
 void parks_init(void) {
