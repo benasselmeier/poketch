@@ -30,6 +30,7 @@ static AppState s_state = STATE_PARK_SELECT;
 static int s_park_idx = 0;
 static int s_coaster_idx = 0;
 static int s_history_idx = 0;
+static int s_scroll_offset = 0;  // For scrollable lists
 
 static int s_active_palette = 0;
 
@@ -96,17 +97,20 @@ static const char *softkey_label(int key) {
 static void enter_park_select(void) {
   s_state = STATE_PARK_SELECT;
   s_park_idx = 0;
+  s_scroll_offset = 0;
   redraw();
 }
 
 static void enter_coaster_select(void) {
   s_state = STATE_COASTER_SELECT;
   s_coaster_idx = 0;
+  s_scroll_offset = 0;
   redraw();
 }
 
 static void enter_recording(void) {
   s_state = STATE_RECORDING;
+  s_scroll_offset = 0;
   forces_recorder_start();
   s_tick_timer = app_timer_register(500, NULL, NULL);
   redraw();
@@ -115,6 +119,7 @@ static void enter_recording(void) {
 static void enter_history(void) {
   s_state = STATE_RIDE_HISTORY;
   s_history_idx = 0;
+  s_scroll_offset = 0;
   redraw();
 }
 
@@ -259,51 +264,81 @@ static void draw_side_buttons(GContext *ctx) {
 
 static void draw_app_content(GContext *ctx) {
   PoketchPalette palette = current_palette();
-  GRect content = inset_rect(s_viewport_rect, 8);
-
+  GRect content = inset_rect(s_viewport_rect, 6);
+  int row_height = 28;  // Height of each list item
+  int rows_visible = (content.size.h / row_height);
+  
   graphics_context_set_text_color(ctx, palette.dark);
 
   if (s_state == STATE_PARK_SELECT) {
-    // Draw park list with scrolling
-    int start_idx = s_park_idx;
-    char buf[128];
-
-    snprintf(buf, sizeof(buf), "PARK %d/%d", s_park_idx + 1, parks_get_count());
-    graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
-                       GRect(content.origin.x, content.origin.y + 8, content.size.w, 16),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
-    Park *park = parks_get(start_idx);
-    if (park) {
-      graphics_draw_text(ctx, park->name, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
-                         GRect(content.origin.x + 4, content.origin.y + 30, content.size.w - 8, 60),
-                         GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
-
-      snprintf(buf, sizeof(buf), "%d Coasters", park->coaster_count);
-      graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_18),
-                         GRect(content.origin.x + 4, content.origin.y + 95, content.size.w - 8, 20),
-                         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    int park_count = parks_get_count();
+    
+    // Draw list header
+    graphics_draw_text(ctx, "Parks", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+                       GRect(content.origin.x, content.origin.y, content.size.w, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    
+    // Calculate scroll position
+    if (s_park_idx >= s_scroll_offset + rows_visible) {
+      s_scroll_offset = s_park_idx - rows_visible + 1;
+    }
+    if (s_park_idx < s_scroll_offset) {
+      s_scroll_offset = s_park_idx;
+    }
+    
+    int y = content.origin.y + 18;
+    for (int i = 0; i < rows_visible && i + s_scroll_offset < park_count; i++) {
+      Park *park = parks_get(i + s_scroll_offset);
+      if (park) {
+        // Highlight selected item
+        if (i + s_scroll_offset == s_park_idx) {
+          graphics_context_set_fill_color(ctx, palette.light);
+          graphics_fill_rect(ctx, GRect(content.origin.x - 2, y - 2, content.size.w + 4, row_height - 2), 0, GCornerNone);
+          graphics_context_set_text_color(ctx, palette.dark);
+        }
+        
+        graphics_draw_text(ctx, park->name, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+                           GRect(content.origin.x + 2, y, content.size.w - 4, row_height),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+        y += row_height;
+      }
     }
 
   } else if (s_state == STATE_COASTER_SELECT) {
     Park *park = parks_get(s_park_idx);
     if (park) {
-      char buf[128];
-      snprintf(buf, sizeof(buf), "%d/%d", s_coaster_idx + 1, park->coaster_count);
-      graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
-                         GRect(content.origin.x, content.origin.y + 8, content.size.w, 16),
-                         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
-      Coaster *coaster = parks_get_coaster(s_park_idx, s_coaster_idx);
-      if (coaster) {
-        graphics_draw_text(ctx, coaster->name, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                           GRect(content.origin.x + 4, content.origin.y + 30, content.size.w - 8, 50),
-                           GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
-
-        const char *type_str = coaster->type == COASTER_TYPE_WOOD ? "Wood" : "Steel";
-        graphics_draw_text(ctx, type_str, fonts_get_system_font(FONT_KEY_GOTHIC_18),
-                           GRect(content.origin.x + 4, content.origin.y + 85, content.size.w - 8, 20),
-                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      // Draw park name as header
+      graphics_draw_text(ctx, park->name, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+                         GRect(content.origin.x, content.origin.y, content.size.w, 16),
+                         GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+      
+      // Calculate scroll position
+      if (s_coaster_idx >= s_scroll_offset + rows_visible) {
+        s_scroll_offset = s_coaster_idx - rows_visible + 1;
+      }
+      if (s_coaster_idx < s_scroll_offset) {
+        s_scroll_offset = s_coaster_idx;
+      }
+      
+      int y = content.origin.y + 18;
+      for (int i = 0; i < rows_visible && i + s_scroll_offset < park->coaster_count; i++) {
+        Coaster *coaster = parks_get_coaster(s_park_idx, i + s_scroll_offset);
+        if (coaster) {
+          // Highlight selected item
+          if (i + s_scroll_offset == s_coaster_idx) {
+            graphics_context_set_fill_color(ctx, palette.light);
+            graphics_fill_rect(ctx, GRect(content.origin.x - 2, y - 2, content.size.w + 4, row_height - 2), 0, GCornerNone);
+            graphics_context_set_text_color(ctx, palette.dark);
+          }
+          
+          const char *type = coaster->type == COASTER_TYPE_WOOD ? "🪵" : "⛓️";
+          char item_text[64];
+          snprintf(item_text, sizeof(item_text), "%s %s", type, coaster->name);
+          graphics_draw_text(ctx, item_text, fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                             GRect(content.origin.x + 2, y, content.size.w - 4, row_height),
+                             GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+          y += row_height;
+        }
       }
     }
 
@@ -330,7 +365,9 @@ static void draw_app_content(GContext *ctx) {
 
     // Current G-force (green)
     graphics_context_set_text_color(ctx, GColorGreen);
-    snprintf(buf, sizeof(buf), "%.2f g", reading.magnitude / 1000.0f);
+    uint16_t g_whole = reading.magnitude / 1000;
+    uint16_t g_frac = (reading.magnitude % 1000) / 10;
+    snprintf(buf, sizeof(buf), "%u.%02u g", g_whole, g_frac);
     graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
                        GRect(content.origin.x, content.origin.y + 70, content.size.w, 24),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
@@ -338,12 +375,16 @@ static void draw_app_content(GContext *ctx) {
     graphics_context_set_text_color(ctx, palette.dark);
 
     // Max/Min
-    snprintf(buf, sizeof(buf), "Max: %.2f", max_g / 1000.0f);
+    uint16_t max_whole = max_g / 1000;
+    uint16_t max_frac = (max_g % 1000) / 10;
+    snprintf(buf, sizeof(buf), "Max: %u.%02u", max_whole, max_frac);
     graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
                        GRect(content.origin.x, content.origin.y + 98, content.size.w / 2, 16),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-    snprintf(buf, sizeof(buf), "Min: %.2f", min_g / 1000.0f);
+    uint16_t min_whole = min_g / 1000;
+    uint16_t min_frac = (min_g % 1000) / 10;
+    snprintf(buf, sizeof(buf), "Min: %u.%02u", min_whole, min_frac);
     graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
                        GRect(content.origin.x + content.size.w / 2, content.origin.y + 98, content.size.w / 2, 16),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
@@ -354,33 +395,39 @@ static void draw_app_content(GContext *ctx) {
       graphics_draw_text(ctx, "No rides recorded yet", fonts_get_system_font(FONT_KEY_GOTHIC_18),
                          content, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
     } else {
-      RideRecord *ride = ride_data_get(s_history_idx);
-      if (ride) {
-        char buf[128];
-
-        snprintf(buf, sizeof(buf), "RIDE %d/%d", s_history_idx + 1, ride_count);
-        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
-                           GRect(content.origin.x, content.origin.y + 2, content.size.w, 16),
-                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
-        graphics_draw_text(ctx, ride->coaster, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-                           GRect(content.origin.x + 4, content.origin.y + 20, content.size.w - 8, 30),
-                           GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
-
-        snprintf(buf, sizeof(buf), "%lu sec", (unsigned long)ride->duration_s);
-        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_18),
-                           GRect(content.origin.x, content.origin.y + 52, content.size.w, 20),
-                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
-        snprintf(buf, sizeof(buf), "Max: %.2f g", ride->max_g / 1000.0f);
-        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                           GRect(content.origin.x, content.origin.y + 75, content.size.w, 18),
-                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
-        snprintf(buf, sizeof(buf), "Min: %.2f g", ride->min_g / 1000.0f);
-        graphics_draw_text(ctx, buf, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                           GRect(content.origin.x, content.origin.y + 95, content.size.w, 18),
-                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      // Draw rides list header
+      graphics_draw_text(ctx, "Rides", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+                         GRect(content.origin.x, content.origin.y, content.size.w, 16),
+                         GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+      
+      // Calculate scroll position
+      if (s_history_idx >= s_scroll_offset + rows_visible) {
+        s_scroll_offset = s_history_idx - rows_visible + 1;
+      }
+      if (s_history_idx < s_scroll_offset) {
+        s_scroll_offset = s_history_idx;
+      }
+      
+      int y = content.origin.y + 18;
+      for (int i = 0; i < rows_visible && i + s_scroll_offset < ride_count; i++) {
+        RideRecord *ride = ride_data_get(i + s_scroll_offset);
+        if (ride) {
+          // Highlight selected item
+          if (i + s_scroll_offset == s_history_idx) {
+            graphics_context_set_fill_color(ctx, palette.light);
+            graphics_fill_rect(ctx, GRect(content.origin.x - 2, y - 2, content.size.w + 4, row_height - 2), 0, GCornerNone);
+            graphics_context_set_text_color(ctx, palette.dark);
+          }
+          
+          char item_text[96];
+          uint16_t max_whole = ride->max_g / 1000;
+          uint16_t max_frac = (ride->max_g % 1000) / 10;
+          snprintf(item_text, sizeof(item_text), "%s (%u.%02ug)", ride->coaster, max_whole, max_frac);
+          graphics_draw_text(ctx, item_text, fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                             GRect(content.origin.x + 2, y, content.size.w - 4, row_height),
+                             GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+          y += row_height;
+        }
       }
     }
   }
